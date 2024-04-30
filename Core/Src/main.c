@@ -21,6 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <lcd_driver.h>
 
 /* USER CODE END Includes */
 
@@ -70,6 +71,11 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+//	int lcd_return;
+//	  HAL_StatusTypeDef ret;
+//	  uint8_t buf[12];
+//	  int16_t val;
+//	  float temp_c;
 
   /* USER CODE END 1 */
 
@@ -94,13 +100,42 @@ int main(void)
   MX_USART2_UART_Init();
   MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
+  HAL_StatusTypeDef ret;
+
 
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+
+  	LCD_Setup(&hi2c1);
+
+
+
+  	LCD_Set_Cursor_Position(&hi2c1, 2, 0);
+
+	ret = LCD_Write_String(&hi2c1, "Hi Dude");
+
+
+	LCD_Return_Home(&hi2c1);
+//  	LCD_Set_Cursor_Position(&hi2c1, 2, 12);
+
+	// イルヨ
+	LCD_Write_Char(&hi2c1, 0xB2);
+	LCD_Write_Char(&hi2c1, 0xD9);
+	LCD_Write_Char(&hi2c1, 0xD6);
+
+	// !!!
+	LCD_Write_Char(&hi2c1, 0x21);
+	LCD_Write_Char(&hi2c1, 0x21);
+	LCD_Write_Char(&hi2c1, 0x21);
+
+
   while (1)
   {
+
+
+
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */

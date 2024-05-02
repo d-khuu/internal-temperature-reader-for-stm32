@@ -3,6 +3,13 @@
  *
  *  Created on: Mar 31, 2024
  *      Author: Danny
+ *
+ *      TODO: The LCD screen innately cannot handle strings
+ *      that will overflow from the first row to the second
+ *      row. So there needs to be a internal cursor tracker
+ *      so that the write function can write the rest of the
+ *      string to the second line. Issue is where to place
+ *      this logic.
  */
 
 #include <lcd_driver.h>
@@ -148,7 +155,7 @@ int LCD_Initialise_State_Struct(I2C_HandleTypeDef* i2c_handler)
 }
 
 
-int LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler)
+int __LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler)
 {
 	LCD_Reset(i2c_handler);
 	LCD_Write_String(i2c_handler, lcd_current_state_g.chars_on_screen);
@@ -163,7 +170,7 @@ int LCD_Show_Debug_Message(I2C_HandleTypeDef* i2c_handler, char* output_string)
 	LCD_Reset(i2c_handler);
 	LCD_Write_String(i2c_handler, output_string);
 	HAL_Delay(4000);
-	LCD_Redraw_Current_State(i2c_handler);
+	__LCD_Redraw_Current_State(i2c_handler);
 	return 1;
 }
 
@@ -176,9 +183,9 @@ int LCD_Write_String_Non_Debug(I2C_HandleTypeDef* i2c_handler, char* output_stri
 	{
 		if(output_string[i] != '\0')
 		{
-			__LCD_State_Update_Cursor_Position(0,0,0);
 			__LCD_State_Update_LCD_Screen(i2c_handler, output_string[i]);
 			LCD_Write_Char(i2c_handler, output_string[i]);
+			__LCD_State_Update_Cursor_Position(0,0,0);
 		}
 	}
 	// LCD_Write_String(i2c_handler, output_string);
@@ -231,6 +238,7 @@ int __LCD_State_Update_LCD_Screen(I2C_HandleTypeDef* i2c_handler, char output_ch
 	{
 		sprintf(debug_message, "The index exceeded for %c",output_char);
 		LCD_Show_Debug_Message(i2c_handler, debug_message);
+		return 0;
 	}
 	lcd_current_state_g.chars_on_screen[index] = output_char;
 

@@ -112,23 +112,27 @@ int main(void)
 
 
 
-  	LCD_Set_Cursor_Position(&hi2c1, 2, 0);
+//  	LCD_Set_Cursor_Position(&hi2c1, 2, 0);
 
-	ret = LCD_Write_String(&hi2c1, "Hi Dude");
+	ret = LCD_Write_String_Non_Debug(&hi2c1, "Hi Dude, where's my car?!");
+
+	HAL_Delay(2000);
+
+	ret = LCD_Show_Debug_Message(&hi2c1, "Debug!!");
 
 
-	LCD_Return_Home(&hi2c1);
+//	LCD_Return_Home(&hi2c1);
 //  	LCD_Set_Cursor_Position(&hi2c1, 2, 12);
 
 	// イルヨ
-	LCD_Write_Char(&hi2c1, 0xB2);
-	LCD_Write_Char(&hi2c1, 0xD9);
-	LCD_Write_Char(&hi2c1, 0xD6);
+//	LCD_Write_Char(&hi2c1, 0xB2);
+//	LCD_Write_Char(&hi2c1, 0xD9);
+//	LCD_Write_Char(&hi2c1, 0xD6);
 
 	// !!!
-	LCD_Write_Char(&hi2c1, 0x21);
-	LCD_Write_Char(&hi2c1, 0x21);
-	LCD_Write_Char(&hi2c1, 0x21);
+//	LCD_Write_Char(&hi2c1, 0x21);
+//	LCD_Write_Char(&hi2c1, 0x21);
+//	LCD_Write_Char(&hi2c1, 0x21);
 
 
   while (1)

@@ -126,7 +126,7 @@ int LCD_Set_Cursor_Position(I2C_HandleTypeDef* i2c_handler, int row, int col);
 
 int LCD_Return_Home(I2C_HandleTypeDef* i2c_handler);
 
-int LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler);
+
 
 int LCD_Show_Debug_Message(I2C_HandleTypeDef* i2c_handler, char* output_string);
 
@@ -139,6 +139,7 @@ int LCD_Set_Cursor_Position_Non_Debug(I2C_HandleTypeDef* i2c_handler, int row, i
 int LCD_Initialise_State_Struct(I2C_HandleTypeDef* i2c_handler);
 int __LCD_State_Update_Cursor_Position(int row, int col, int update_absolute_position);
 int __LCD_State_Update_LCD_Screen(I2C_HandleTypeDef* i2c_handler, char output_char);
+int __LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler);
 
 
 #endif /* INC_LCD_DRIVER_H_ */

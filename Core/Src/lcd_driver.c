@@ -178,9 +178,10 @@ int LCD_Write_String_Non_Debug(I2C_HandleTypeDef* i2c_handler, char* output_stri
 		{
 			__LCD_State_Update_Cursor_Position(0,0,0);
 			__LCD_State_Update_LCD_Screen(i2c_handler, output_string[i]);
+			LCD_Write_Char(i2c_handler, output_string[i]);
 		}
 	}
-	LCD_Write_String(i2c_handler, output_string);
+	// LCD_Write_String(i2c_handler, output_string);
 	return 1;
 }
 
@@ -197,14 +198,17 @@ int LCD_Set_Cursor_Position_Non_Debug(I2C_HandleTypeDef* i2c_handler, int row, i
 
 int __LCD_State_Update_Cursor_Position(int row, int col, int update_absolute_position)
 {
-	// If update to an absolute position?
+	int overflows_to_row_2 = (lcd_current_state_g.cursor_row == 1 
+							  && lcd_current_state_g.cursor_col == 15);
+
+	// update to an absolute position
 	if(update_absolute_position == 1)
 	{
 		lcd_current_state_g.cursor_row = row;
 		lcd_current_state_g.cursor_col = col;
 	}
 	// If it overflows to the second row
-	else if(lcd_current_state_g.cursor_row == 1 && lcd_current_state_g.cursor_col == 15)
+	else if(overflows_to_row_2)
 	{
 		lcd_current_state_g.cursor_row = 2;
 		lcd_current_state_g.cursor_col = 0;

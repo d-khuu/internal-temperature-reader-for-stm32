@@ -59,7 +59,7 @@ int LCD_Setup(I2C_HandleTypeDef* i2c_handler)
 	return ret;
 }
 
-
+// TODO: Needs to reset the state struct
 int LCD_Reset(I2C_HandleTypeDef* i2c_handler)
 {
 	HAL_StatusTypeDef ret;

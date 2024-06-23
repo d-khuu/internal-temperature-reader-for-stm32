@@ -134,6 +134,8 @@ int LCD_Show_Debug_Message(I2C_HandleTypeDef* i2c_handler, char* output_string);
 // and returning the text back to the original state
 int LCD_Write_String_Non_Debug(I2C_HandleTypeDef* i2c_handler, char* output_string);
 
+// Row values 1,2
+// Col values 0-15
 int LCD_Set_Cursor_Position_Non_Debug(I2C_HandleTypeDef* i2c_handler, int row, int col);
 
 int LCD_Initialise_State_Struct(I2C_HandleTypeDef* i2c_handler);

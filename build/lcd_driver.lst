@@ -1,0 +1,1455 @@
+ARM GAS  /tmp/cckGfUJX.s 			page 1
+
+
+   1              		.cpu cortex-m4
+   2              		.arch armv7e-m
+   3              		.fpu fpv4-sp-d16
+   4              		.eabi_attribute 27, 1
+   5              		.eabi_attribute 28, 1
+   6              		.eabi_attribute 20, 1
+   7              		.eabi_attribute 21, 1
+   8              		.eabi_attribute 23, 3
+   9              		.eabi_attribute 24, 1
+  10              		.eabi_attribute 25, 1
+  11              		.eabi_attribute 26, 1
+  12              		.eabi_attribute 30, 1
+  13              		.eabi_attribute 34, 1
+  14              		.eabi_attribute 18, 4
+  15              		.file	"lcd_driver.c"
+  16              		.text
+  17              	.Ltext0:
+  18              		.cfi_sections	.debug_frame
+  19              		.file 1 "Core/Src/lcd_driver.c"
+  20              		.section	.text.LCD_Reset,"ax",%progbits
+  21              		.align	1
+  22              		.global	LCD_Reset
+  23              		.syntax unified
+  24              		.thumb
+  25              		.thumb_func
+  27              	LCD_Reset:
+  28              	.LVL0:
+  29              	.LFB243:
+   1:Core/Src/lcd_driver.c **** /*
+   2:Core/Src/lcd_driver.c ****  * lcd_driver.c
+   3:Core/Src/lcd_driver.c ****  *
+   4:Core/Src/lcd_driver.c ****  *  Created on: Mar 31, 2024
+   5:Core/Src/lcd_driver.c ****  *      Author: Danny
+   6:Core/Src/lcd_driver.c ****  *
+   7:Core/Src/lcd_driver.c ****  *      TODO: The LCD screen innately cannot handle strings
+   8:Core/Src/lcd_driver.c ****  *      that will overflow from the first row to the second
+   9:Core/Src/lcd_driver.c ****  *      row. So there needs to be a internal cursor tracker
+  10:Core/Src/lcd_driver.c ****  *      so that the write function can write the rest of the
+  11:Core/Src/lcd_driver.c ****  *      string to the second line. Issue is where to place
+  12:Core/Src/lcd_driver.c ****  *      this logic.
+  13:Core/Src/lcd_driver.c ****  */
+  14:Core/Src/lcd_driver.c **** 
+  15:Core/Src/lcd_driver.c **** #include <lcd_driver.h>
+  16:Core/Src/lcd_driver.c **** 
+  17:Core/Src/lcd_driver.c **** struct lcd_current_state lcd_current_state_g;
+  18:Core/Src/lcd_driver.c **** 
+  19:Core/Src/lcd_driver.c **** int LCD_Setup(I2C_HandleTypeDef* i2c_handler)
+  20:Core/Src/lcd_driver.c **** {
+  21:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+  22:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+  23:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_CONTROL_BYTE;
+  24:Core/Src/lcd_driver.c **** 
+  25:Core/Src/lcd_driver.c **** 	// 15ms initialisation delay
+  26:Core/Src/lcd_driver.c **** 	HAL_Delay(15);
+  27:Core/Src/lcd_driver.c **** 
+  28:Core/Src/lcd_driver.c **** 	// Set function set
+  29:Core/Src/lcd_driver.c **** 	// 2-line mode, 8-bit Bus Mode, display on
+ARM GAS  /tmp/cckGfUJX.s 			page 2
+
+
+  30:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_FUNCTION_SET | LCD_DL_8BIT | LCD_2_LINE;
+  31:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+  32:Core/Src/lcd_driver.c **** 
+  33:Core/Src/lcd_driver.c **** 	// Delay of at least 39 us
+  34:Core/Src/lcd_driver.c **** 	HAL_Delay(1);
+  35:Core/Src/lcd_driver.c **** 
+  36:Core/Src/lcd_driver.c **** 	// Set display mode
+  37:Core/Src/lcd_driver.c **** 	// display on, cursor on, cursor blink on
+  38:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_DISPLAY_ONOFF_CONTROL | LCD_DISP_CTRL_ON | LCD_CURSOR_ON | LCD_CURSOR_BLINK_ON;
+  39:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+  40:Core/Src/lcd_driver.c **** 
+  41:Core/Src/lcd_driver.c **** 	// Delay of at least 39 us
+  42:Core/Src/lcd_driver.c **** 	HAL_Delay(1);
+  43:Core/Src/lcd_driver.c **** 
+  44:Core/Src/lcd_driver.c **** 	// Clear display
+  45:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_CLEAR_DISPLAY;
+  46:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+  47:Core/Src/lcd_driver.c **** 
+  48:Core/Src/lcd_driver.c **** 
+  49:Core/Src/lcd_driver.c **** 	// Delay of at least 1.53 ms
+  50:Core/Src/lcd_driver.c **** 	HAL_Delay(2);
+  51:Core/Src/lcd_driver.c **** 
+  52:Core/Src/lcd_driver.c **** 	// Entry Mode Set
+  53:Core/Src/lcd_driver.c **** 	// Cursor moves to the right, no shift (no idea what this is)
+  54:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_ENTRY_MODE_SET | LCD_INC_DDRAM | LCD_NO_SHIFT_DISP;
+  55:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+  56:Core/Src/lcd_driver.c **** 
+  57:Core/Src/lcd_driver.c **** 	LCD_Initialise_State_Struct(i2c_handler);
+  58:Core/Src/lcd_driver.c **** 
+  59:Core/Src/lcd_driver.c **** 	return ret;
+  60:Core/Src/lcd_driver.c **** }
+  61:Core/Src/lcd_driver.c **** 
+  62:Core/Src/lcd_driver.c **** // TODO: Needs to reset the state struct
+  63:Core/Src/lcd_driver.c **** int LCD_Reset(I2C_HandleTypeDef* i2c_handler)
+  64:Core/Src/lcd_driver.c **** {
+  30              		.loc 1 64 1 view -0
+  31              		.cfi_startproc
+  32              		@ args = 0, pretend = 0, frame = 16
+  33              		@ frame_needed = 0, uses_anonymous_args = 0
+  34              		.loc 1 64 1 is_stmt 0 view .LVU1
+  35 0000 10B5     		push	{r4, lr}
+  36              		.cfi_def_cfa_offset 8
+  37              		.cfi_offset 4, -8
+  38              		.cfi_offset 14, -4
+  39 0002 86B0     		sub	sp, sp, #24
+  40              		.cfi_def_cfa_offset 32
+  65:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+  41              		.loc 1 65 2 is_stmt 1 view .LVU2
+  66:Core/Src/lcd_driver.c **** 
+  67:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+  42              		.loc 1 67 2 view .LVU3
+  68:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_CONTROL_BYTE;
+  43              		.loc 1 68 2 view .LVU4
+  44              		.loc 1 68 12 is_stmt 0 view .LVU5
+  45 0004 0023     		movs	r3, #0
+  46 0006 8DF80C30 		strb	r3, [sp, #12]
+  69:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_CLEAR_DISPLAY;
+ARM GAS  /tmp/cckGfUJX.s 			page 3
+
+
+  47              		.loc 1 69 2 is_stmt 1 view .LVU6
+  48              		.loc 1 69 12 is_stmt 0 view .LVU7
+  49 000a 0123     		movs	r3, #1
+  50 000c 8DF80D30 		strb	r3, [sp, #13]
+  70:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+  51              		.loc 1 70 2 is_stmt 1 view .LVU8
+  52              		.loc 1 70 8 is_stmt 0 view .LVU9
+  53 0010 4FF0FF33 		mov	r3, #-1
+  54 0014 0093     		str	r3, [sp]
+  55 0016 0223     		movs	r3, #2
+  56 0018 03AA     		add	r2, sp, #12
+  57 001a 7C21     		movs	r1, #124
+  58 001c FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+  59              	.LVL1:
+  60              		.loc 1 70 8 view .LVU10
+  61 0020 0446     		mov	r4, r0
+  62              	.LVL2:
+  71:Core/Src/lcd_driver.c **** 
+  72:Core/Src/lcd_driver.c **** 
+  73:Core/Src/lcd_driver.c **** 	// Delay of at least 1.53 ms
+  74:Core/Src/lcd_driver.c **** 	HAL_Delay(2);
+  63              		.loc 1 74 2 is_stmt 1 view .LVU11
+  64 0022 0220     		movs	r0, #2
+  65 0024 FFF7FEFF 		bl	HAL_Delay
+  66              	.LVL3:
+  75:Core/Src/lcd_driver.c **** 
+  76:Core/Src/lcd_driver.c **** 	return ret;
+  67              		.loc 1 76 2 view .LVU12
+  77:Core/Src/lcd_driver.c **** }
+  68              		.loc 1 77 1 is_stmt 0 view .LVU13
+  69 0028 2046     		mov	r0, r4
+  70 002a 06B0     		add	sp, sp, #24
+  71              		.cfi_def_cfa_offset 8
+  72              		@ sp needed
+  73 002c 10BD     		pop	{r4, pc}
+  74              		.loc 1 77 1 view .LVU14
+  75              		.cfi_endproc
+  76              	.LFE243:
+  78              		.section	.text.LCD_Write_Char,"ax",%progbits
+  79              		.align	1
+  80              		.global	LCD_Write_Char
+  81              		.syntax unified
+  82              		.thumb
+  83              		.thumb_func
+  85              	LCD_Write_Char:
+  86              	.LVL4:
+  87              	.LFB244:
+  78:Core/Src/lcd_driver.c **** 
+  79:Core/Src/lcd_driver.c **** int LCD_Write_Char(I2C_HandleTypeDef* i2c_handler, char output_char)
+  80:Core/Src/lcd_driver.c **** {
+  88              		.loc 1 80 1 is_stmt 1 view -0
+  89              		.cfi_startproc
+  90              		@ args = 0, pretend = 0, frame = 16
+  91              		@ frame_needed = 0, uses_anonymous_args = 0
+  92              		.loc 1 80 1 is_stmt 0 view .LVU16
+  93 0000 00B5     		push	{lr}
+  94              		.cfi_def_cfa_offset 4
+ARM GAS  /tmp/cckGfUJX.s 			page 4
+
+
+  95              		.cfi_offset 14, -4
+  96 0002 87B0     		sub	sp, sp, #28
+  97              		.cfi_def_cfa_offset 32
+  81:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+  98              		.loc 1 81 2 is_stmt 1 view .LVU17
+  82:Core/Src/lcd_driver.c **** 
+  83:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+  99              		.loc 1 83 2 view .LVU18
+  84:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_CGRAM_ADDRESS;
+ 100              		.loc 1 84 2 view .LVU19
+ 101              		.loc 1 84 12 is_stmt 0 view .LVU20
+ 102 0004 4023     		movs	r3, #64
+ 103 0006 8DF80C30 		strb	r3, [sp, #12]
+  85:Core/Src/lcd_driver.c **** 	buffer[1] = output_char;
+ 104              		.loc 1 85 2 is_stmt 1 view .LVU21
+ 105              		.loc 1 85 12 is_stmt 0 view .LVU22
+ 106 000a 8DF80D10 		strb	r1, [sp, #13]
+  86:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 107              		.loc 1 86 2 is_stmt 1 view .LVU23
+ 108              		.loc 1 86 8 is_stmt 0 view .LVU24
+ 109 000e 4FF0FF33 		mov	r3, #-1
+ 110 0012 0093     		str	r3, [sp]
+ 111 0014 0223     		movs	r3, #2
+ 112 0016 03AA     		add	r2, sp, #12
+ 113 0018 7C21     		movs	r1, #124
+ 114              	.LVL5:
+ 115              		.loc 1 86 8 view .LVU25
+ 116 001a FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 117              	.LVL6:
+  87:Core/Src/lcd_driver.c **** 
+  88:Core/Src/lcd_driver.c **** 	return ret;
+ 118              		.loc 1 88 2 is_stmt 1 view .LVU26
+  89:Core/Src/lcd_driver.c **** }
+ 119              		.loc 1 89 1 is_stmt 0 view .LVU27
+ 120 001e 07B0     		add	sp, sp, #28
+ 121              		.cfi_def_cfa_offset 4
+ 122              		@ sp needed
+ 123 0020 5DF804FB 		ldr	pc, [sp], #4
+ 124              		.cfi_endproc
+ 125              	.LFE244:
+ 127              		.section	.text.LCD_Write_String,"ax",%progbits
+ 128              		.align	1
+ 129              		.global	LCD_Write_String
+ 130              		.syntax unified
+ 131              		.thumb
+ 132              		.thumb_func
+ 134              	LCD_Write_String:
+ 135              	.LVL7:
+ 136              	.LFB245:
+  90:Core/Src/lcd_driver.c **** 
+  91:Core/Src/lcd_driver.c **** 
+  92:Core/Src/lcd_driver.c **** int LCD_Write_String(I2C_HandleTypeDef* i2c_handler, char* output_string)
+  93:Core/Src/lcd_driver.c **** {
+ 137              		.loc 1 93 1 is_stmt 1 view -0
+ 138              		.cfi_startproc
+ 139              		@ args = 0, pretend = 0, frame = 0
+ 140              		@ frame_needed = 0, uses_anonymous_args = 0
+ARM GAS  /tmp/cckGfUJX.s 			page 5
+
+
+ 141              		.loc 1 93 1 is_stmt 0 view .LVU29
+ 142 0000 2DE9F041 		push	{r4, r5, r6, r7, r8, lr}
+ 143              		.cfi_def_cfa_offset 24
+ 144              		.cfi_offset 4, -24
+ 145              		.cfi_offset 5, -20
+ 146              		.cfi_offset 6, -16
+ 147              		.cfi_offset 7, -12
+ 148              		.cfi_offset 8, -8
+ 149              		.cfi_offset 14, -4
+ 150 0004 8046     		mov	r8, r0
+ 151 0006 0E46     		mov	r6, r1
+ 152 0008 0027     		movs	r7, #0
+  94:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+ 153              		.loc 1 94 2 is_stmt 1 view .LVU30
+  95:Core/Src/lcd_driver.c **** 	int string_count = strlen(output_string);
+ 154              		.loc 1 95 2 view .LVU31
+ 155              		.loc 1 95 21 is_stmt 0 view .LVU32
+ 156 000a 0846     		mov	r0, r1
+ 157              	.LVL8:
+ 158              		.loc 1 95 21 view .LVU33
+ 159 000c FFF7FEFF 		bl	strlen
+ 160              	.LVL9:
+ 161              		.loc 1 95 21 view .LVU34
+ 162 0010 0546     		mov	r5, r0
+ 163              	.LVL10:
+  96:Core/Src/lcd_driver.c **** 
+  97:Core/Src/lcd_driver.c **** 	for(int i = 0; i<string_count; i++)
+ 164              		.loc 1 97 2 is_stmt 1 view .LVU35
+ 165              	.LBB2:
+ 166              		.loc 1 97 6 view .LVU36
+ 167              		.loc 1 97 10 is_stmt 0 view .LVU37
+ 168 0012 3C46     		mov	r4, r7
+ 169              		.loc 1 97 2 view .LVU38
+ 170 0014 00E0     		b	.L6
+ 171              	.LVL11:
+ 172              	.L7:
+ 173              		.loc 1 97 34 is_stmt 1 discriminator 2 view .LVU39
+ 174 0016 0134     		adds	r4, r4, #1
+ 175              	.LVL12:
+ 176              	.L6:
+ 177              		.loc 1 97 18 discriminator 1 view .LVU40
+ 178 0018 AC42     		cmp	r4, r5
+ 179 001a 07DA     		bge	.L10
+  98:Core/Src/lcd_driver.c **** 	{
+  99:Core/Src/lcd_driver.c **** 		if(output_string[i] != '\0') ret = LCD_Write_Char(i2c_handler, output_string[i]);
+ 180              		.loc 1 99 3 view .LVU41
+ 181              		.loc 1 99 19 is_stmt 0 view .LVU42
+ 182 001c 315D     		ldrb	r1, [r6, r4]	@ zero_extendqisi2
+ 183              		.loc 1 99 5 view .LVU43
+ 184 001e 0029     		cmp	r1, #0
+ 185 0020 F9D0     		beq	.L7
+ 186              		.loc 1 99 32 is_stmt 1 discriminator 1 view .LVU44
+ 187              		.loc 1 99 38 is_stmt 0 discriminator 1 view .LVU45
+ 188 0022 4046     		mov	r0, r8
+ 189 0024 FFF7FEFF 		bl	LCD_Write_Char
+ 190              	.LVL13:
+ 191              		.loc 1 99 36 discriminator 1 view .LVU46
+ARM GAS  /tmp/cckGfUJX.s 			page 6
+
+
+ 192 0028 C7B2     		uxtb	r7, r0
+ 193              	.LVL14:
+ 194              		.loc 1 99 36 discriminator 1 view .LVU47
+ 195 002a F4E7     		b	.L7
+ 196              	.LVL15:
+ 197              	.L10:
+ 198              		.loc 1 99 36 discriminator 1 view .LVU48
+ 199              	.LBE2:
+ 100:Core/Src/lcd_driver.c **** 	}
+ 101:Core/Src/lcd_driver.c **** 
+ 102:Core/Src/lcd_driver.c **** 	return ret;
+ 200              		.loc 1 102 2 is_stmt 1 view .LVU49
+ 103:Core/Src/lcd_driver.c **** }
+ 201              		.loc 1 103 1 is_stmt 0 view .LVU50
+ 202 002c 3846     		mov	r0, r7
+ 203 002e BDE8F081 		pop	{r4, r5, r6, r7, r8, pc}
+ 204              		.loc 1 103 1 view .LVU51
+ 205              		.cfi_endproc
+ 206              	.LFE245:
+ 208              		.section	.text.LCD_Set_Cursor_Position,"ax",%progbits
+ 209              		.align	1
+ 210              		.global	LCD_Set_Cursor_Position
+ 211              		.syntax unified
+ 212              		.thumb
+ 213              		.thumb_func
+ 215              	LCD_Set_Cursor_Position:
+ 216              	.LVL16:
+ 217              	.LFB246:
+ 104:Core/Src/lcd_driver.c **** 
+ 105:Core/Src/lcd_driver.c **** 
+ 106:Core/Src/lcd_driver.c **** int LCD_Set_Cursor_Position(I2C_HandleTypeDef* i2c_handler, int row, int col)
+ 107:Core/Src/lcd_driver.c **** {
+ 218              		.loc 1 107 1 is_stmt 1 view -0
+ 219              		.cfi_startproc
+ 220              		@ args = 0, pretend = 0, frame = 16
+ 221              		@ frame_needed = 0, uses_anonymous_args = 0
+ 222              		.loc 1 107 1 is_stmt 0 view .LVU53
+ 223 0000 00B5     		push	{lr}
+ 224              		.cfi_def_cfa_offset 4
+ 225              		.cfi_offset 14, -4
+ 226 0002 87B0     		sub	sp, sp, #28
+ 227              		.cfi_def_cfa_offset 32
+ 108:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+ 228              		.loc 1 108 2 is_stmt 1 view .LVU54
+ 109:Core/Src/lcd_driver.c **** 
+ 110:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+ 229              		.loc 1 110 2 view .LVU55
+ 111:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_DDRAM_ADDRESS;
+ 230              		.loc 1 111 2 view .LVU56
+ 231              		.loc 1 111 12 is_stmt 0 view .LVU57
+ 232 0004 8023     		movs	r3, #128
+ 233 0006 8DF80C30 		strb	r3, [sp, #12]
+ 112:Core/Src/lcd_driver.c **** 	if(row == 1)
+ 234              		.loc 1 112 2 is_stmt 1 view .LVU58
+ 235              		.loc 1 112 4 is_stmt 0 view .LVU59
+ 236 000a 0129     		cmp	r1, #1
+ 237 000c 06D0     		beq	.L17
+ARM GAS  /tmp/cckGfUJX.s 			page 7
+
+
+ 113:Core/Src/lcd_driver.c **** 	{
+ 114:Core/Src/lcd_driver.c **** 		buffer[1] = LCD_DDRAM_ADDRESS | LCD_ROW_1_FIRST_ADDRESS | col;
+ 115:Core/Src/lcd_driver.c **** 	}
+ 116:Core/Src/lcd_driver.c **** 	else if(row == 2)
+ 238              		.loc 1 116 7 is_stmt 1 view .LVU60
+ 239              		.loc 1 116 9 is_stmt 0 view .LVU61
+ 240 000e 0229     		cmp	r1, #2
+ 241 0010 13D1     		bne	.L15
+ 117:Core/Src/lcd_driver.c **** 	{
+ 118:Core/Src/lcd_driver.c **** 		buffer[1] = LCD_DDRAM_ADDRESS | LCD_ROW_2_FIRST_ADDRESS | col;
+ 242              		.loc 1 118 3 is_stmt 1 view .LVU62
+ 243              		.loc 1 118 59 is_stmt 0 view .LVU63
+ 244 0012 62F03F02 		orn	r2, r2, #63
+ 245              	.LVL17:
+ 246              		.loc 1 118 13 view .LVU64
+ 247 0016 8DF80D20 		strb	r2, [sp, #13]
+ 248 001a 03E0     		b	.L13
+ 249              	.LVL18:
+ 250              	.L17:
+ 114:Core/Src/lcd_driver.c **** 	}
+ 251              		.loc 1 114 3 is_stmt 1 view .LVU65
+ 114:Core/Src/lcd_driver.c **** 	}
+ 252              		.loc 1 114 59 is_stmt 0 view .LVU66
+ 253 001c 62F07F02 		orn	r2, r2, #127
+ 254              	.LVL19:
+ 114:Core/Src/lcd_driver.c **** 	}
+ 255              		.loc 1 114 13 view .LVU67
+ 256 0020 8DF80D20 		strb	r2, [sp, #13]
+ 257              	.L13:
+ 119:Core/Src/lcd_driver.c **** 	}
+ 120:Core/Src/lcd_driver.c **** 	else
+ 121:Core/Src/lcd_driver.c **** 	{
+ 122:Core/Src/lcd_driver.c **** 		return HAL_ERROR;
+ 123:Core/Src/lcd_driver.c **** 	}
+ 124:Core/Src/lcd_driver.c **** 
+ 125:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 258              		.loc 1 125 2 is_stmt 1 view .LVU68
+ 259              		.loc 1 125 8 is_stmt 0 view .LVU69
+ 260 0024 4FF0FF33 		mov	r3, #-1
+ 261 0028 0093     		str	r3, [sp]
+ 262 002a 0223     		movs	r3, #2
+ 263 002c 03AA     		add	r2, sp, #12
+ 264 002e 7C21     		movs	r1, #124
+ 265              	.LVL20:
+ 266              		.loc 1 125 8 view .LVU70
+ 267 0030 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 268              	.LVL21:
+ 126:Core/Src/lcd_driver.c **** 
+ 127:Core/Src/lcd_driver.c **** 	return ret;
+ 269              		.loc 1 127 2 is_stmt 1 view .LVU71
+ 270              	.L11:
+ 128:Core/Src/lcd_driver.c **** 
+ 129:Core/Src/lcd_driver.c **** }
+ 271              		.loc 1 129 1 is_stmt 0 view .LVU72
+ 272 0034 07B0     		add	sp, sp, #28
+ 273              		.cfi_remember_state
+ 274              		.cfi_def_cfa_offset 4
+ARM GAS  /tmp/cckGfUJX.s 			page 8
+
+
+ 275              		@ sp needed
+ 276 0036 5DF804FB 		ldr	pc, [sp], #4
+ 277              	.LVL22:
+ 278              	.L15:
+ 279              		.cfi_restore_state
+ 122:Core/Src/lcd_driver.c **** 	}
+ 280              		.loc 1 122 10 view .LVU73
+ 281 003a 0120     		movs	r0, #1
+ 282              	.LVL23:
+ 122:Core/Src/lcd_driver.c **** 	}
+ 283              		.loc 1 122 10 view .LVU74
+ 284 003c FAE7     		b	.L11
+ 285              		.cfi_endproc
+ 286              	.LFE246:
+ 288              		.section	.text.LCD_Return_Home,"ax",%progbits
+ 289              		.align	1
+ 290              		.global	LCD_Return_Home
+ 291              		.syntax unified
+ 292              		.thumb
+ 293              		.thumb_func
+ 295              	LCD_Return_Home:
+ 296              	.LVL24:
+ 297              	.LFB247:
+ 130:Core/Src/lcd_driver.c **** 
+ 131:Core/Src/lcd_driver.c **** int LCD_Return_Home(I2C_HandleTypeDef* i2c_handler)
+ 132:Core/Src/lcd_driver.c **** {
+ 298              		.loc 1 132 1 is_stmt 1 view -0
+ 299              		.cfi_startproc
+ 300              		@ args = 0, pretend = 0, frame = 16
+ 301              		@ frame_needed = 0, uses_anonymous_args = 0
+ 302              		.loc 1 132 1 is_stmt 0 view .LVU76
+ 303 0000 30B5     		push	{r4, r5, lr}
+ 304              		.cfi_def_cfa_offset 12
+ 305              		.cfi_offset 4, -12
+ 306              		.cfi_offset 5, -8
+ 307              		.cfi_offset 14, -4
+ 308 0002 87B0     		sub	sp, sp, #28
+ 309              		.cfi_def_cfa_offset 40
+ 133:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+ 310              		.loc 1 133 2 is_stmt 1 view .LVU77
+ 134:Core/Src/lcd_driver.c **** 
+ 135:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+ 311              		.loc 1 135 2 view .LVU78
+ 136:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_CONTROL_BYTE;
+ 312              		.loc 1 136 2 view .LVU79
+ 313              		.loc 1 136 12 is_stmt 0 view .LVU80
+ 314 0004 0023     		movs	r3, #0
+ 315 0006 8DF80C30 		strb	r3, [sp, #12]
+ 137:Core/Src/lcd_driver.c **** 	buffer[1] = LCD_RETURN_HOME;
+ 316              		.loc 1 137 2 is_stmt 1 view .LVU81
+ 317              		.loc 1 137 12 is_stmt 0 view .LVU82
+ 318 000a 0225     		movs	r5, #2
+ 319 000c 8DF80D50 		strb	r5, [sp, #13]
+ 138:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 320              		.loc 1 138 2 is_stmt 1 view .LVU83
+ 321              		.loc 1 138 8 is_stmt 0 view .LVU84
+ 322 0010 4FF0FF33 		mov	r3, #-1
+ARM GAS  /tmp/cckGfUJX.s 			page 9
+
+
+ 323 0014 0093     		str	r3, [sp]
+ 324 0016 2B46     		mov	r3, r5
+ 325 0018 03AA     		add	r2, sp, #12
+ 326 001a 7C21     		movs	r1, #124
+ 327 001c FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 328              	.LVL25:
+ 329              		.loc 1 138 8 view .LVU85
+ 330 0020 0446     		mov	r4, r0
+ 331              	.LVL26:
+ 139:Core/Src/lcd_driver.c **** 
+ 140:Core/Src/lcd_driver.c **** 
+ 141:Core/Src/lcd_driver.c **** 	// Delay of at least 1.53 ms
+ 142:Core/Src/lcd_driver.c **** 	HAL_Delay(2);
+ 332              		.loc 1 142 2 is_stmt 1 view .LVU86
+ 333 0022 2846     		mov	r0, r5
+ 334 0024 FFF7FEFF 		bl	HAL_Delay
+ 335              	.LVL27:
+ 143:Core/Src/lcd_driver.c **** 
+ 144:Core/Src/lcd_driver.c **** 	return ret;
+ 336              		.loc 1 144 2 view .LVU87
+ 145:Core/Src/lcd_driver.c **** }
+ 337              		.loc 1 145 1 is_stmt 0 view .LVU88
+ 338 0028 2046     		mov	r0, r4
+ 339 002a 07B0     		add	sp, sp, #28
+ 340              		.cfi_def_cfa_offset 12
+ 341              		@ sp needed
+ 342 002c 30BD     		pop	{r4, r5, pc}
+ 343              		.loc 1 145 1 view .LVU89
+ 344              		.cfi_endproc
+ 345              	.LFE247:
+ 347              		.section	.text.LCD_Initialise_State_Struct,"ax",%progbits
+ 348              		.align	1
+ 349              		.global	LCD_Initialise_State_Struct
+ 350              		.syntax unified
+ 351              		.thumb
+ 352              		.thumb_func
+ 354              	LCD_Initialise_State_Struct:
+ 355              	.LVL28:
+ 356              	.LFB248:
+ 146:Core/Src/lcd_driver.c **** 
+ 147:Core/Src/lcd_driver.c **** int LCD_Initialise_State_Struct(I2C_HandleTypeDef* i2c_handler)
+ 148:Core/Src/lcd_driver.c **** {
+ 357              		.loc 1 148 1 is_stmt 1 view -0
+ 358              		.cfi_startproc
+ 359              		@ args = 0, pretend = 0, frame = 0
+ 360              		@ frame_needed = 0, uses_anonymous_args = 0
+ 361              		.loc 1 148 1 is_stmt 0 view .LVU91
+ 362 0000 10B5     		push	{r4, lr}
+ 363              		.cfi_def_cfa_offset 8
+ 364              		.cfi_offset 4, -8
+ 365              		.cfi_offset 14, -4
+ 149:Core/Src/lcd_driver.c **** 	lcd_current_state_g.cursor_col = 0;
+ 366              		.loc 1 149 2 is_stmt 1 view .LVU92
+ 367              		.loc 1 149 33 is_stmt 0 view .LVU93
+ 368 0002 0548     		ldr	r0, .L22
+ 369              	.LVL29:
+ 370              		.loc 1 149 33 view .LVU94
+ARM GAS  /tmp/cckGfUJX.s 			page 10
+
+
+ 371 0004 0021     		movs	r1, #0
+ 372 0006 4160     		str	r1, [r0, #4]
+ 150:Core/Src/lcd_driver.c **** 	lcd_current_state_g.cursor_row = 1;
+ 373              		.loc 1 150 2 is_stmt 1 view .LVU95
+ 374              		.loc 1 150 33 is_stmt 0 view .LVU96
+ 375 0008 0124     		movs	r4, #1
+ 376 000a 40F8084B 		str	r4, [r0], #8
+ 151:Core/Src/lcd_driver.c **** 	memset(lcd_current_state_g.chars_on_screen, 0, sizeof(lcd_current_state_g.chars_on_screen));
+ 377              		.loc 1 151 2 is_stmt 1 view .LVU97
+ 378 000e 2022     		movs	r2, #32
+ 379 0010 FFF7FEFF 		bl	memset
+ 380              	.LVL30:
+ 152:Core/Src/lcd_driver.c **** //	memset(lcd_current_state_g.chars_on_screen, 0, sizeof(LCD_MAX_CHAR_LENGTH * lcd_current_state_g.
+ 153:Core/Src/lcd_driver.c **** 
+ 154:Core/Src/lcd_driver.c **** 	return 1;
+ 381              		.loc 1 154 2 view .LVU98
+ 155:Core/Src/lcd_driver.c **** }
+ 382              		.loc 1 155 1 is_stmt 0 view .LVU99
+ 383 0014 2046     		mov	r0, r4
+ 384 0016 10BD     		pop	{r4, pc}
+ 385              	.L23:
+ 386              		.align	2
+ 387              	.L22:
+ 388 0018 00000000 		.word	lcd_current_state_g
+ 389              		.cfi_endproc
+ 390              	.LFE248:
+ 392              		.section	.text.LCD_Setup,"ax",%progbits
+ 393              		.align	1
+ 394              		.global	LCD_Setup
+ 395              		.syntax unified
+ 396              		.thumb
+ 397              		.thumb_func
+ 399              	LCD_Setup:
+ 400              	.LVL31:
+ 401              	.LFB242:
+  20:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+ 402              		.loc 1 20 1 is_stmt 1 view -0
+ 403              		.cfi_startproc
+ 404              		@ args = 0, pretend = 0, frame = 16
+ 405              		@ frame_needed = 0, uses_anonymous_args = 0
+  20:Core/Src/lcd_driver.c **** 	HAL_StatusTypeDef ret;
+ 406              		.loc 1 20 1 is_stmt 0 view .LVU101
+ 407 0000 70B5     		push	{r4, r5, r6, lr}
+ 408              		.cfi_def_cfa_offset 16
+ 409              		.cfi_offset 4, -16
+ 410              		.cfi_offset 5, -12
+ 411              		.cfi_offset 6, -8
+ 412              		.cfi_offset 14, -4
+ 413 0002 86B0     		sub	sp, sp, #24
+ 414              		.cfi_def_cfa_offset 40
+ 415 0004 0446     		mov	r4, r0
+  21:Core/Src/lcd_driver.c **** 	uint8_t buffer[12];
+ 416              		.loc 1 21 2 is_stmt 1 view .LVU102
+  22:Core/Src/lcd_driver.c **** 	buffer[0] = LCD_CONTROL_BYTE;
+ 417              		.loc 1 22 2 view .LVU103
+  23:Core/Src/lcd_driver.c **** 
+ 418              		.loc 1 23 2 view .LVU104
+ARM GAS  /tmp/cckGfUJX.s 			page 11
+
+
+  23:Core/Src/lcd_driver.c **** 
+ 419              		.loc 1 23 12 is_stmt 0 view .LVU105
+ 420 0006 0023     		movs	r3, #0
+ 421 0008 8DF80C30 		strb	r3, [sp, #12]
+  26:Core/Src/lcd_driver.c **** 
+ 422              		.loc 1 26 2 is_stmt 1 view .LVU106
+ 423 000c 0F20     		movs	r0, #15
+ 424              	.LVL32:
+  26:Core/Src/lcd_driver.c **** 
+ 425              		.loc 1 26 2 is_stmt 0 view .LVU107
+ 426 000e FFF7FEFF 		bl	HAL_Delay
+ 427              	.LVL33:
+  30:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 428              		.loc 1 30 2 is_stmt 1 view .LVU108
+  30:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 429              		.loc 1 30 12 is_stmt 0 view .LVU109
+ 430 0012 3823     		movs	r3, #56
+ 431 0014 8DF80D30 		strb	r3, [sp, #13]
+  31:Core/Src/lcd_driver.c **** 
+ 432              		.loc 1 31 2 is_stmt 1 view .LVU110
+  31:Core/Src/lcd_driver.c **** 
+ 433              		.loc 1 31 8 is_stmt 0 view .LVU111
+ 434 0018 03AD     		add	r5, sp, #12
+ 435 001a 4FF0FF36 		mov	r6, #-1
+ 436 001e 0096     		str	r6, [sp]
+ 437 0020 0223     		movs	r3, #2
+ 438 0022 2A46     		mov	r2, r5
+ 439 0024 7C21     		movs	r1, #124
+ 440 0026 2046     		mov	r0, r4
+ 441 0028 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 442              	.LVL34:
+  34:Core/Src/lcd_driver.c **** 
+ 443              		.loc 1 34 2 is_stmt 1 view .LVU112
+ 444 002c 0120     		movs	r0, #1
+ 445 002e FFF7FEFF 		bl	HAL_Delay
+ 446              	.LVL35:
+  38:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 447              		.loc 1 38 2 view .LVU113
+  38:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 448              		.loc 1 38 12 is_stmt 0 view .LVU114
+ 449 0032 0F23     		movs	r3, #15
+ 450 0034 8DF80D30 		strb	r3, [sp, #13]
+  39:Core/Src/lcd_driver.c **** 
+ 451              		.loc 1 39 2 is_stmt 1 view .LVU115
+  39:Core/Src/lcd_driver.c **** 
+ 452              		.loc 1 39 8 is_stmt 0 view .LVU116
+ 453 0038 0096     		str	r6, [sp]
+ 454 003a 0223     		movs	r3, #2
+ 455 003c 2A46     		mov	r2, r5
+ 456 003e 7C21     		movs	r1, #124
+ 457 0040 2046     		mov	r0, r4
+ 458 0042 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 459              	.LVL36:
+  42:Core/Src/lcd_driver.c **** 
+ 460              		.loc 1 42 2 is_stmt 1 view .LVU117
+ 461 0046 0120     		movs	r0, #1
+ 462 0048 FFF7FEFF 		bl	HAL_Delay
+ARM GAS  /tmp/cckGfUJX.s 			page 12
+
+
+ 463              	.LVL37:
+  45:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 464              		.loc 1 45 2 view .LVU118
+  45:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 465              		.loc 1 45 12 is_stmt 0 view .LVU119
+ 466 004c 0123     		movs	r3, #1
+ 467 004e 8DF80D30 		strb	r3, [sp, #13]
+  46:Core/Src/lcd_driver.c **** 
+ 468              		.loc 1 46 2 is_stmt 1 view .LVU120
+  46:Core/Src/lcd_driver.c **** 
+ 469              		.loc 1 46 8 is_stmt 0 view .LVU121
+ 470 0052 0096     		str	r6, [sp]
+ 471 0054 0223     		movs	r3, #2
+ 472 0056 2A46     		mov	r2, r5
+ 473 0058 7C21     		movs	r1, #124
+ 474 005a 2046     		mov	r0, r4
+ 475 005c FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 476              	.LVL38:
+  50:Core/Src/lcd_driver.c **** 
+ 477              		.loc 1 50 2 is_stmt 1 view .LVU122
+ 478 0060 0220     		movs	r0, #2
+ 479 0062 FFF7FEFF 		bl	HAL_Delay
+ 480              	.LVL39:
+  54:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 481              		.loc 1 54 2 view .LVU123
+  54:Core/Src/lcd_driver.c **** 	ret = HAL_I2C_Master_Transmit(i2c_handler, LCD_SLAVE_ADDRESS, buffer, 2, HAL_MAX_DELAY);
+ 482              		.loc 1 54 12 is_stmt 0 view .LVU124
+ 483 0066 0623     		movs	r3, #6
+ 484 0068 8DF80D30 		strb	r3, [sp, #13]
+  55:Core/Src/lcd_driver.c **** 
+ 485              		.loc 1 55 2 is_stmt 1 view .LVU125
+  55:Core/Src/lcd_driver.c **** 
+ 486              		.loc 1 55 8 is_stmt 0 view .LVU126
+ 487 006c 0096     		str	r6, [sp]
+ 488 006e 0223     		movs	r3, #2
+ 489 0070 2A46     		mov	r2, r5
+ 490 0072 7C21     		movs	r1, #124
+ 491 0074 2046     		mov	r0, r4
+ 492 0076 FFF7FEFF 		bl	HAL_I2C_Master_Transmit
+ 493              	.LVL40:
+ 494 007a 0546     		mov	r5, r0
+ 495              	.LVL41:
+  57:Core/Src/lcd_driver.c **** 
+ 496              		.loc 1 57 2 is_stmt 1 view .LVU127
+ 497 007c 2046     		mov	r0, r4
+ 498 007e FFF7FEFF 		bl	LCD_Initialise_State_Struct
+ 499              	.LVL42:
+  59:Core/Src/lcd_driver.c **** }
+ 500              		.loc 1 59 2 view .LVU128
+  60:Core/Src/lcd_driver.c **** 
+ 501              		.loc 1 60 1 is_stmt 0 view .LVU129
+ 502 0082 2846     		mov	r0, r5
+ 503 0084 06B0     		add	sp, sp, #24
+ 504              		.cfi_def_cfa_offset 16
+ 505              		@ sp needed
+ 506 0086 70BD     		pop	{r4, r5, r6, pc}
+  60:Core/Src/lcd_driver.c **** 
+ARM GAS  /tmp/cckGfUJX.s 			page 13
+
+
+ 507              		.loc 1 60 1 view .LVU130
+ 508              		.cfi_endproc
+ 509              	.LFE242:
+ 511              		.section	.text.__LCD_Redraw_Current_State,"ax",%progbits
+ 512              		.align	1
+ 513              		.global	__LCD_Redraw_Current_State
+ 514              		.syntax unified
+ 515              		.thumb
+ 516              		.thumb_func
+ 518              	__LCD_Redraw_Current_State:
+ 519              	.LVL43:
+ 520              	.LFB249:
+ 156:Core/Src/lcd_driver.c **** 
+ 157:Core/Src/lcd_driver.c **** 
+ 158:Core/Src/lcd_driver.c **** int __LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler)
+ 159:Core/Src/lcd_driver.c **** {
+ 521              		.loc 1 159 1 is_stmt 1 view -0
+ 522              		.cfi_startproc
+ 523              		@ args = 0, pretend = 0, frame = 0
+ 524              		@ frame_needed = 0, uses_anonymous_args = 0
+ 525              		.loc 1 159 1 is_stmt 0 view .LVU132
+ 526 0000 38B5     		push	{r3, r4, r5, lr}
+ 527              		.cfi_def_cfa_offset 16
+ 528              		.cfi_offset 3, -16
+ 529              		.cfi_offset 4, -12
+ 530              		.cfi_offset 5, -8
+ 531              		.cfi_offset 14, -4
+ 532 0002 0446     		mov	r4, r0
+ 160:Core/Src/lcd_driver.c **** 	LCD_Reset(i2c_handler);
+ 533              		.loc 1 160 2 is_stmt 1 view .LVU133
+ 534 0004 FFF7FEFF 		bl	LCD_Reset
+ 535              	.LVL44:
+ 161:Core/Src/lcd_driver.c **** 	LCD_Write_String(i2c_handler, lcd_current_state_g.chars_on_screen);
+ 536              		.loc 1 161 2 view .LVU134
+ 537 0008 064D     		ldr	r5, .L28
+ 538 000a 2946     		mov	r1, r5
+ 539 000c 2046     		mov	r0, r4
+ 540 000e FFF7FEFF 		bl	LCD_Write_String
+ 541              	.LVL45:
+ 162:Core/Src/lcd_driver.c **** 	LCD_Set_Cursor_Position(i2c_handler, lcd_current_state_g.cursor_row, lcd_current_state_g.cursor_co
+ 542              		.loc 1 162 2 view .LVU135
+ 543 0012 55F8042C 		ldr	r2, [r5, #-4]
+ 544 0016 55F8081C 		ldr	r1, [r5, #-8]
+ 545 001a 2046     		mov	r0, r4
+ 546 001c FFF7FEFF 		bl	LCD_Set_Cursor_Position
+ 547              	.LVL46:
+ 163:Core/Src/lcd_driver.c **** 
+ 164:Core/Src/lcd_driver.c **** 	return 1;
+ 548              		.loc 1 164 2 view .LVU136
+ 165:Core/Src/lcd_driver.c **** }
+ 549              		.loc 1 165 1 is_stmt 0 view .LVU137
+ 550 0020 0120     		movs	r0, #1
+ 551 0022 38BD     		pop	{r3, r4, r5, pc}
+ 552              	.LVL47:
+ 553              	.L29:
+ 554              		.loc 1 165 1 view .LVU138
+ 555              		.align	2
+ARM GAS  /tmp/cckGfUJX.s 			page 14
+
+
+ 556              	.L28:
+ 557 0024 08000000 		.word	lcd_current_state_g+8
+ 558              		.cfi_endproc
+ 559              	.LFE249:
+ 561              		.section	.text.LCD_Show_Debug_Message,"ax",%progbits
+ 562              		.align	1
+ 563              		.global	LCD_Show_Debug_Message
+ 564              		.syntax unified
+ 565              		.thumb
+ 566              		.thumb_func
+ 568              	LCD_Show_Debug_Message:
+ 569              	.LVL48:
+ 570              	.LFB250:
+ 166:Core/Src/lcd_driver.c **** 
+ 167:Core/Src/lcd_driver.c **** 
+ 168:Core/Src/lcd_driver.c **** int LCD_Show_Debug_Message(I2C_HandleTypeDef* i2c_handler, char* output_string)
+ 169:Core/Src/lcd_driver.c **** {
+ 571              		.loc 1 169 1 is_stmt 1 view -0
+ 572              		.cfi_startproc
+ 573              		@ args = 0, pretend = 0, frame = 0
+ 574              		@ frame_needed = 0, uses_anonymous_args = 0
+ 575              		.loc 1 169 1 is_stmt 0 view .LVU140
+ 576 0000 38B5     		push	{r3, r4, r5, lr}
+ 577              		.cfi_def_cfa_offset 16
+ 578              		.cfi_offset 3, -16
+ 579              		.cfi_offset 4, -12
+ 580              		.cfi_offset 5, -8
+ 581              		.cfi_offset 14, -4
+ 582 0002 0446     		mov	r4, r0
+ 583 0004 0D46     		mov	r5, r1
+ 170:Core/Src/lcd_driver.c **** 	LCD_Reset(i2c_handler);
+ 584              		.loc 1 170 2 is_stmt 1 view .LVU141
+ 585 0006 FFF7FEFF 		bl	LCD_Reset
+ 586              	.LVL49:
+ 171:Core/Src/lcd_driver.c **** 	LCD_Write_String(i2c_handler, output_string);
+ 587              		.loc 1 171 2 view .LVU142
+ 588 000a 2946     		mov	r1, r5
+ 589 000c 2046     		mov	r0, r4
+ 590 000e FFF7FEFF 		bl	LCD_Write_String
+ 591              	.LVL50:
+ 172:Core/Src/lcd_driver.c **** 	HAL_Delay(4000);
+ 592              		.loc 1 172 2 view .LVU143
+ 593 0012 4FF47A60 		mov	r0, #4000
+ 594 0016 FFF7FEFF 		bl	HAL_Delay
+ 595              	.LVL51:
+ 173:Core/Src/lcd_driver.c **** 	__LCD_Redraw_Current_State(i2c_handler);
+ 596              		.loc 1 173 2 view .LVU144
+ 597 001a 2046     		mov	r0, r4
+ 598 001c FFF7FEFF 		bl	__LCD_Redraw_Current_State
+ 599              	.LVL52:
+ 174:Core/Src/lcd_driver.c **** 	return 1;
+ 600              		.loc 1 174 2 view .LVU145
+ 175:Core/Src/lcd_driver.c **** }
+ 601              		.loc 1 175 1 is_stmt 0 view .LVU146
+ 602 0020 0120     		movs	r0, #1
+ 603 0022 38BD     		pop	{r3, r4, r5, pc}
+ 604              		.loc 1 175 1 view .LVU147
+ARM GAS  /tmp/cckGfUJX.s 			page 15
+
+
+ 605              		.cfi_endproc
+ 606              	.LFE250:
+ 608              		.section	.text.__LCD_State_Update_Cursor_Position,"ax",%progbits
+ 609              		.align	1
+ 610              		.global	__LCD_State_Update_Cursor_Position
+ 611              		.syntax unified
+ 612              		.thumb
+ 613              		.thumb_func
+ 615              	__LCD_State_Update_Cursor_Position:
+ 616              	.LVL53:
+ 617              	.LFB253:
+ 176:Core/Src/lcd_driver.c **** 
+ 177:Core/Src/lcd_driver.c **** int LCD_Write_String_Non_Debug(I2C_HandleTypeDef* i2c_handler, char* output_string)
+ 178:Core/Src/lcd_driver.c **** {
+ 179:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 180:Core/Src/lcd_driver.c **** 	int string_count = strlen(output_string);
+ 181:Core/Src/lcd_driver.c **** 
+ 182:Core/Src/lcd_driver.c **** 	for(int i = 0; i<string_count; i++)
+ 183:Core/Src/lcd_driver.c **** 	{
+ 184:Core/Src/lcd_driver.c **** 		if(output_string[i] != '\0')
+ 185:Core/Src/lcd_driver.c **** 		{
+ 186:Core/Src/lcd_driver.c **** 			__LCD_State_Update_LCD_Screen(i2c_handler, output_string[i]);
+ 187:Core/Src/lcd_driver.c **** 			LCD_Write_Char(i2c_handler, output_string[i]);
+ 188:Core/Src/lcd_driver.c **** 			__LCD_State_Update_Cursor_Position(0,0,0);
+ 189:Core/Src/lcd_driver.c **** 		}
+ 190:Core/Src/lcd_driver.c **** 	}
+ 191:Core/Src/lcd_driver.c **** 	// LCD_Write_String(i2c_handler, output_string);
+ 192:Core/Src/lcd_driver.c **** 	return 1;
+ 193:Core/Src/lcd_driver.c **** }
+ 194:Core/Src/lcd_driver.c **** 
+ 195:Core/Src/lcd_driver.c **** int LCD_Set_Cursor_Position_Non_Debug(I2C_HandleTypeDef* i2c_handler, int row, int col)
+ 196:Core/Src/lcd_driver.c **** {
+ 197:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 198:Core/Src/lcd_driver.c **** 	__LCD_State_Update_Cursor_Position(row, col, 1);
+ 199:Core/Src/lcd_driver.c **** 
+ 200:Core/Src/lcd_driver.c **** 
+ 201:Core/Src/lcd_driver.c **** 	LCD_Set_Cursor_Position(i2c_handler, row, col);
+ 202:Core/Src/lcd_driver.c **** 
+ 203:Core/Src/lcd_driver.c **** 	return 1;
+ 204:Core/Src/lcd_driver.c **** }
+ 205:Core/Src/lcd_driver.c **** 
+ 206:Core/Src/lcd_driver.c **** int __LCD_State_Update_Cursor_Position(int row, int col, int update_absolute_position)
+ 207:Core/Src/lcd_driver.c **** {
+ 618              		.loc 1 207 1 is_stmt 1 view -0
+ 619              		.cfi_startproc
+ 620              		@ args = 0, pretend = 0, frame = 0
+ 621              		@ frame_needed = 0, uses_anonymous_args = 0
+ 622              		@ link register save eliminated.
+ 623              		.loc 1 207 1 is_stmt 0 view .LVU149
+ 624 0000 10B4     		push	{r4}
+ 625              		.cfi_def_cfa_offset 4
+ 626              		.cfi_offset 4, -4
+ 208:Core/Src/lcd_driver.c **** 	int overflows_to_row_2 = (lcd_current_state_g.cursor_row == 1 
+ 627              		.loc 1 208 2 is_stmt 1 view .LVU150
+ 628              		.loc 1 208 47 is_stmt 0 view .LVU151
+ 629 0002 104B     		ldr	r3, .L41
+ 630 0004 1B68     		ldr	r3, [r3]
+ARM GAS  /tmp/cckGfUJX.s 			page 16
+
+
+ 209:Core/Src/lcd_driver.c **** 							  && lcd_current_state_g.cursor_col == 15);
+ 631              		.loc 1 209 10 view .LVU152
+ 632 0006 012B     		cmp	r3, #1
+ 633 0008 09D0     		beq	.L39
+ 634              		.loc 1 209 10 discriminator 4 view .LVU153
+ 635 000a 0023     		movs	r3, #0
+ 636              	.L33:
+ 637              	.LVL54:
+ 210:Core/Src/lcd_driver.c **** 
+ 211:Core/Src/lcd_driver.c **** 	// update to an absolute position
+ 212:Core/Src/lcd_driver.c **** 	if(update_absolute_position == 1)
+ 638              		.loc 1 212 2 is_stmt 1 view .LVU154
+ 639              		.loc 1 212 4 is_stmt 0 view .LVU155
+ 640 000c 012A     		cmp	r2, #1
+ 641 000e 0CD0     		beq	.L40
+ 213:Core/Src/lcd_driver.c **** 	{
+ 214:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_row = row;
+ 215:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col = col;
+ 216:Core/Src/lcd_driver.c **** 	}
+ 217:Core/Src/lcd_driver.c **** 	// If it overflows to the second row
+ 218:Core/Src/lcd_driver.c **** 	else if(overflows_to_row_2)
+ 642              		.loc 1 218 7 is_stmt 1 view .LVU156
+ 643              		.loc 1 218 9 is_stmt 0 view .LVU157
+ 644 0010 93B1     		cbz	r3, .L36
+ 219:Core/Src/lcd_driver.c **** 	{
+ 220:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_row = 2;
+ 645              		.loc 1 220 3 is_stmt 1 view .LVU158
+ 646              		.loc 1 220 34 is_stmt 0 view .LVU159
+ 647 0012 0C4B     		ldr	r3, .L41
+ 648              	.LVL55:
+ 649              		.loc 1 220 34 view .LVU160
+ 650 0014 0222     		movs	r2, #2
+ 651              	.LVL56:
+ 652              		.loc 1 220 34 view .LVU161
+ 653 0016 1A60     		str	r2, [r3]
+ 221:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col = 0;
+ 654              		.loc 1 221 3 is_stmt 1 view .LVU162
+ 655              		.loc 1 221 34 is_stmt 0 view .LVU163
+ 656 0018 0022     		movs	r2, #0
+ 657 001a 5A60     		str	r2, [r3, #4]
+ 658 001c 08E0     		b	.L35
+ 659              	.LVL57:
+ 660              	.L39:
+ 209:Core/Src/lcd_driver.c **** 
+ 661              		.loc 1 209 32 discriminator 1 view .LVU164
+ 662 001e 094C     		ldr	r4, .L41
+ 663 0020 6468     		ldr	r4, [r4, #4]
+ 209:Core/Src/lcd_driver.c **** 
+ 664              		.loc 1 209 10 discriminator 1 view .LVU165
+ 665 0022 0F2C     		cmp	r4, #15
+ 666 0024 F2D0     		beq	.L33
+ 209:Core/Src/lcd_driver.c **** 
+ 667              		.loc 1 209 10 discriminator 4 view .LVU166
+ 668 0026 0023     		movs	r3, #0
+ 669 0028 F0E7     		b	.L33
+ 670              	.LVL58:
+ 671              	.L40:
+ARM GAS  /tmp/cckGfUJX.s 			page 17
+
+
+ 214:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col = col;
+ 672              		.loc 1 214 3 is_stmt 1 view .LVU167
+ 214:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col = col;
+ 673              		.loc 1 214 34 is_stmt 0 view .LVU168
+ 674 002a 064B     		ldr	r3, .L41
+ 675              	.LVL59:
+ 214:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col = col;
+ 676              		.loc 1 214 34 view .LVU169
+ 677 002c 1860     		str	r0, [r3]
+ 215:Core/Src/lcd_driver.c **** 	}
+ 678              		.loc 1 215 3 is_stmt 1 view .LVU170
+ 215:Core/Src/lcd_driver.c **** 	}
+ 679              		.loc 1 215 34 is_stmt 0 view .LVU171
+ 680 002e 5960     		str	r1, [r3, #4]
+ 681              	.LVL60:
+ 682              	.L35:
+ 222:Core/Src/lcd_driver.c **** 	}
+ 223:Core/Src/lcd_driver.c **** 	// The LCD screen's cursor can overflow out of the screen, so no need to account for that
+ 224:Core/Src/lcd_driver.c **** 	else
+ 225:Core/Src/lcd_driver.c **** 	{
+ 226:Core/Src/lcd_driver.c **** 		lcd_current_state_g.cursor_col++;
+ 227:Core/Src/lcd_driver.c **** 	}
+ 228:Core/Src/lcd_driver.c **** 
+ 229:Core/Src/lcd_driver.c **** 	return 1;
+ 683              		.loc 1 229 2 is_stmt 1 view .LVU172
+ 230:Core/Src/lcd_driver.c **** }
+ 684              		.loc 1 230 1 is_stmt 0 view .LVU173
+ 685 0030 0120     		movs	r0, #1
+ 686              	.LVL61:
+ 687              		.loc 1 230 1 view .LVU174
+ 688 0032 5DF8044B 		ldr	r4, [sp], #4
+ 689              		.cfi_remember_state
+ 690              		.cfi_restore 4
+ 691              		.cfi_def_cfa_offset 0
+ 692 0036 7047     		bx	lr
+ 693              	.LVL62:
+ 694              	.L36:
+ 695              		.cfi_restore_state
+ 226:Core/Src/lcd_driver.c **** 	}
+ 696              		.loc 1 226 3 is_stmt 1 view .LVU175
+ 226:Core/Src/lcd_driver.c **** 	}
+ 697              		.loc 1 226 22 is_stmt 0 view .LVU176
+ 698 0038 024A     		ldr	r2, .L41
+ 699              	.LVL63:
+ 226:Core/Src/lcd_driver.c **** 	}
+ 700              		.loc 1 226 22 view .LVU177
+ 701 003a 5368     		ldr	r3, [r2, #4]
+ 702              	.LVL64:
+ 226:Core/Src/lcd_driver.c **** 	}
+ 703              		.loc 1 226 33 view .LVU178
+ 704 003c 0133     		adds	r3, r3, #1
+ 705 003e 5360     		str	r3, [r2, #4]
+ 706 0040 F6E7     		b	.L35
+ 707              	.L42:
+ 708 0042 00BF     		.align	2
+ 709              	.L41:
+ 710 0044 00000000 		.word	lcd_current_state_g
+ARM GAS  /tmp/cckGfUJX.s 			page 18
+
+
+ 711              		.cfi_endproc
+ 712              	.LFE253:
+ 714              		.section	.text.LCD_Set_Cursor_Position_Non_Debug,"ax",%progbits
+ 715              		.align	1
+ 716              		.global	LCD_Set_Cursor_Position_Non_Debug
+ 717              		.syntax unified
+ 718              		.thumb
+ 719              		.thumb_func
+ 721              	LCD_Set_Cursor_Position_Non_Debug:
+ 722              	.LVL65:
+ 723              	.LFB252:
+ 196:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 724              		.loc 1 196 1 is_stmt 1 view -0
+ 725              		.cfi_startproc
+ 726              		@ args = 0, pretend = 0, frame = 0
+ 727              		@ frame_needed = 0, uses_anonymous_args = 0
+ 196:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 728              		.loc 1 196 1 is_stmt 0 view .LVU180
+ 729 0000 70B5     		push	{r4, r5, r6, lr}
+ 730              		.cfi_def_cfa_offset 16
+ 731              		.cfi_offset 4, -16
+ 732              		.cfi_offset 5, -12
+ 733              		.cfi_offset 6, -8
+ 734              		.cfi_offset 14, -4
+ 735 0002 0646     		mov	r6, r0
+ 736 0004 0C46     		mov	r4, r1
+ 737 0006 1546     		mov	r5, r2
+ 198:Core/Src/lcd_driver.c **** 
+ 738              		.loc 1 198 2 is_stmt 1 view .LVU181
+ 739 0008 0122     		movs	r2, #1
+ 740              	.LVL66:
+ 198:Core/Src/lcd_driver.c **** 
+ 741              		.loc 1 198 2 is_stmt 0 view .LVU182
+ 742 000a 2946     		mov	r1, r5
+ 743              	.LVL67:
+ 198:Core/Src/lcd_driver.c **** 
+ 744              		.loc 1 198 2 view .LVU183
+ 745 000c 2046     		mov	r0, r4
+ 746              	.LVL68:
+ 198:Core/Src/lcd_driver.c **** 
+ 747              		.loc 1 198 2 view .LVU184
+ 748 000e FFF7FEFF 		bl	__LCD_State_Update_Cursor_Position
+ 749              	.LVL69:
+ 201:Core/Src/lcd_driver.c **** 
+ 750              		.loc 1 201 2 is_stmt 1 view .LVU185
+ 751 0012 2A46     		mov	r2, r5
+ 752 0014 2146     		mov	r1, r4
+ 753 0016 3046     		mov	r0, r6
+ 754 0018 FFF7FEFF 		bl	LCD_Set_Cursor_Position
+ 755              	.LVL70:
+ 203:Core/Src/lcd_driver.c **** }
+ 756              		.loc 1 203 2 view .LVU186
+ 204:Core/Src/lcd_driver.c **** 
+ 757              		.loc 1 204 1 is_stmt 0 view .LVU187
+ 758 001c 0120     		movs	r0, #1
+ 759 001e 70BD     		pop	{r4, r5, r6, pc}
+ 204:Core/Src/lcd_driver.c **** 
+ARM GAS  /tmp/cckGfUJX.s 			page 19
+
+
+ 760              		.loc 1 204 1 view .LVU188
+ 761              		.cfi_endproc
+ 762              	.LFE252:
+ 764              		.section	.rodata.__LCD_State_Update_LCD_Screen.str1.4,"aMS",%progbits,1
+ 765              		.align	2
+ 766              	.LC0:
+ 767 0000 54686520 		.ascii	"The index exceeded for %c\000"
+ 767      696E6465 
+ 767      78206578 
+ 767      63656564 
+ 767      65642066 
+ 768              		.section	.text.__LCD_State_Update_LCD_Screen,"ax",%progbits
+ 769              		.align	1
+ 770              		.global	__LCD_State_Update_LCD_Screen
+ 771              		.syntax unified
+ 772              		.thumb
+ 773              		.thumb_func
+ 775              	__LCD_State_Update_LCD_Screen:
+ 776              	.LVL71:
+ 777              	.LFB254:
+ 231:Core/Src/lcd_driver.c **** 
+ 232:Core/Src/lcd_driver.c **** int __LCD_State_Update_LCD_Screen(I2C_HandleTypeDef* i2c_handler, char output_char)
+ 233:Core/Src/lcd_driver.c **** {
+ 778              		.loc 1 233 1 is_stmt 1 view -0
+ 779              		.cfi_startproc
+ 780              		@ args = 0, pretend = 0, frame = 0
+ 781              		@ frame_needed = 0, uses_anonymous_args = 0
+ 782              		.loc 1 233 1 is_stmt 0 view .LVU190
+ 783 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 784              		.cfi_def_cfa_offset 24
+ 785              		.cfi_offset 3, -24
+ 786              		.cfi_offset 4, -20
+ 787              		.cfi_offset 5, -16
+ 788              		.cfi_offset 6, -12
+ 789              		.cfi_offset 7, -8
+ 790              		.cfi_offset 14, -4
+ 791 0002 0746     		mov	r7, r0
+ 792 0004 0D46     		mov	r5, r1
+ 234:Core/Src/lcd_driver.c **** 	int index = (lcd_current_state_g.cursor_row-1)*16 + lcd_current_state_g.cursor_col;
+ 793              		.loc 1 234 2 is_stmt 1 view .LVU191
+ 794              		.loc 1 234 34 is_stmt 0 view .LVU192
+ 795 0006 0D4A     		ldr	r2, .L50
+ 796 0008 1368     		ldr	r3, [r2]
+ 797              		.loc 1 234 45 view .LVU193
+ 798 000a 013B     		subs	r3, r3, #1
+ 799              		.loc 1 234 73 view .LVU194
+ 800 000c 5468     		ldr	r4, [r2, #4]
+ 801              		.loc 1 234 6 view .LVU195
+ 802 000e 04EB0314 		add	r4, r4, r3, lsl #4
+ 803              	.LVL72:
+ 235:Core/Src/lcd_driver.c **** 
+ 236:Core/Src/lcd_driver.c **** 	char * debug_message = malloc(LCD_MAX_CHAR_LENGTH * sizeof(char));
+ 804              		.loc 1 236 2 is_stmt 1 view .LVU196
+ 805              		.loc 1 236 25 is_stmt 0 view .LVU197
+ 806 0012 2020     		movs	r0, #32
+ 807              	.LVL73:
+ 808              		.loc 1 236 25 view .LVU198
+ARM GAS  /tmp/cckGfUJX.s 			page 20
+
+
+ 809 0014 FFF7FEFF 		bl	malloc
+ 810              	.LVL74:
+ 237:Core/Src/lcd_driver.c **** 	if(index >= LCD_MAX_CHAR_LENGTH)
+ 811              		.loc 1 237 2 is_stmt 1 view .LVU199
+ 812              		.loc 1 237 4 is_stmt 0 view .LVU200
+ 813 0018 1F2C     		cmp	r4, #31
+ 814 001a 04DC     		bgt	.L49
+ 238:Core/Src/lcd_driver.c **** 	{
+ 239:Core/Src/lcd_driver.c **** 		sprintf(debug_message, "The index exceeded for %c",output_char);
+ 240:Core/Src/lcd_driver.c **** 		LCD_Show_Debug_Message(i2c_handler, debug_message);
+ 241:Core/Src/lcd_driver.c **** 		return 0;
+ 242:Core/Src/lcd_driver.c **** 	}
+ 243:Core/Src/lcd_driver.c **** 	lcd_current_state_g.chars_on_screen[index] = output_char;
+ 815              		.loc 1 243 2 is_stmt 1 view .LVU201
+ 816              		.loc 1 243 45 is_stmt 0 view .LVU202
+ 817 001c 074B     		ldr	r3, .L50
+ 818 001e 2344     		add	r3, r3, r4
+ 819 0020 1D72     		strb	r5, [r3, #8]
+ 244:Core/Src/lcd_driver.c **** 
+ 245:Core/Src/lcd_driver.c **** 	return 1;
+ 820              		.loc 1 245 2 is_stmt 1 view .LVU203
+ 821              		.loc 1 245 9 is_stmt 0 view .LVU204
+ 822 0022 0120     		movs	r0, #1
+ 823              	.LVL75:
+ 824              	.L45:
+ 246:Core/Src/lcd_driver.c **** }
+ 825              		.loc 1 246 1 view .LVU205
+ 826 0024 F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 827              	.LVL76:
+ 828              	.L49:
+ 829              		.loc 1 246 1 view .LVU206
+ 830 0026 0646     		mov	r6, r0
+ 239:Core/Src/lcd_driver.c **** 		LCD_Show_Debug_Message(i2c_handler, debug_message);
+ 831              		.loc 1 239 3 is_stmt 1 view .LVU207
+ 832 0028 2A46     		mov	r2, r5
+ 833 002a 0549     		ldr	r1, .L50+4
+ 834 002c FFF7FEFF 		bl	sprintf
+ 835              	.LVL77:
+ 240:Core/Src/lcd_driver.c **** 		return 0;
+ 836              		.loc 1 240 3 view .LVU208
+ 837 0030 3146     		mov	r1, r6
+ 838 0032 3846     		mov	r0, r7
+ 839 0034 FFF7FEFF 		bl	LCD_Show_Debug_Message
+ 840              	.LVL78:
+ 241:Core/Src/lcd_driver.c **** 	}
+ 841              		.loc 1 241 3 view .LVU209
+ 241:Core/Src/lcd_driver.c **** 	}
+ 842              		.loc 1 241 10 is_stmt 0 view .LVU210
+ 843 0038 0020     		movs	r0, #0
+ 844 003a F3E7     		b	.L45
+ 845              	.L51:
+ 846              		.align	2
+ 847              	.L50:
+ 848 003c 00000000 		.word	lcd_current_state_g
+ 849 0040 00000000 		.word	.LC0
+ 850              		.cfi_endproc
+ 851              	.LFE254:
+ARM GAS  /tmp/cckGfUJX.s 			page 21
+
+
+ 853              		.section	.text.LCD_Write_String_Non_Debug,"ax",%progbits
+ 854              		.align	1
+ 855              		.global	LCD_Write_String_Non_Debug
+ 856              		.syntax unified
+ 857              		.thumb
+ 858              		.thumb_func
+ 860              	LCD_Write_String_Non_Debug:
+ 861              	.LVL79:
+ 862              	.LFB251:
+ 178:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 863              		.loc 1 178 1 is_stmt 1 view -0
+ 864              		.cfi_startproc
+ 865              		@ args = 0, pretend = 0, frame = 0
+ 866              		@ frame_needed = 0, uses_anonymous_args = 0
+ 178:Core/Src/lcd_driver.c **** 	//Update the internal current state struct
+ 867              		.loc 1 178 1 is_stmt 0 view .LVU212
+ 868 0000 F8B5     		push	{r3, r4, r5, r6, r7, lr}
+ 869              		.cfi_def_cfa_offset 24
+ 870              		.cfi_offset 3, -24
+ 871              		.cfi_offset 4, -20
+ 872              		.cfi_offset 5, -16
+ 873              		.cfi_offset 6, -12
+ 874              		.cfi_offset 7, -8
+ 875              		.cfi_offset 14, -4
+ 876 0002 0746     		mov	r7, r0
+ 877 0004 0D46     		mov	r5, r1
+ 180:Core/Src/lcd_driver.c **** 
+ 878              		.loc 1 180 2 is_stmt 1 view .LVU213
+ 180:Core/Src/lcd_driver.c **** 
+ 879              		.loc 1 180 21 is_stmt 0 view .LVU214
+ 880 0006 0846     		mov	r0, r1
+ 881              	.LVL80:
+ 180:Core/Src/lcd_driver.c **** 
+ 882              		.loc 1 180 21 view .LVU215
+ 883 0008 FFF7FEFF 		bl	strlen
+ 884              	.LVL81:
+ 180:Core/Src/lcd_driver.c **** 
+ 885              		.loc 1 180 21 view .LVU216
+ 886 000c 0646     		mov	r6, r0
+ 887              	.LVL82:
+ 182:Core/Src/lcd_driver.c **** 	{
+ 888              		.loc 1 182 2 is_stmt 1 view .LVU217
+ 889              	.LBB3:
+ 182:Core/Src/lcd_driver.c **** 	{
+ 890              		.loc 1 182 6 view .LVU218
+ 182:Core/Src/lcd_driver.c **** 	{
+ 891              		.loc 1 182 10 is_stmt 0 view .LVU219
+ 892 000e 0024     		movs	r4, #0
+ 182:Core/Src/lcd_driver.c **** 	{
+ 893              		.loc 1 182 2 view .LVU220
+ 894 0010 00E0     		b	.L53
+ 895              	.LVL83:
+ 896              	.L54:
+ 182:Core/Src/lcd_driver.c **** 	{
+ 897              		.loc 1 182 34 is_stmt 1 discriminator 2 view .LVU221
+ 898 0012 0134     		adds	r4, r4, #1
+ 899              	.LVL84:
+ARM GAS  /tmp/cckGfUJX.s 			page 22
+
+
+ 900              	.L53:
+ 182:Core/Src/lcd_driver.c **** 	{
+ 901              		.loc 1 182 18 discriminator 1 view .LVU222
+ 902 0014 B442     		cmp	r4, r6
+ 903 0016 0FDA     		bge	.L57
+ 184:Core/Src/lcd_driver.c **** 		{
+ 904              		.loc 1 184 3 view .LVU223
+ 184:Core/Src/lcd_driver.c **** 		{
+ 905              		.loc 1 184 19 is_stmt 0 view .LVU224
+ 906 0018 295D     		ldrb	r1, [r5, r4]	@ zero_extendqisi2
+ 184:Core/Src/lcd_driver.c **** 		{
+ 907              		.loc 1 184 5 view .LVU225
+ 908 001a 0029     		cmp	r1, #0
+ 909 001c F9D0     		beq	.L54
+ 186:Core/Src/lcd_driver.c **** 			LCD_Write_Char(i2c_handler, output_string[i]);
+ 910              		.loc 1 186 4 is_stmt 1 view .LVU226
+ 911 001e 3846     		mov	r0, r7
+ 912 0020 FFF7FEFF 		bl	__LCD_State_Update_LCD_Screen
+ 913              	.LVL85:
+ 187:Core/Src/lcd_driver.c **** 			__LCD_State_Update_Cursor_Position(0,0,0);
+ 914              		.loc 1 187 4 view .LVU227
+ 915 0024 295D     		ldrb	r1, [r5, r4]	@ zero_extendqisi2
+ 916 0026 3846     		mov	r0, r7
+ 917 0028 FFF7FEFF 		bl	LCD_Write_Char
+ 918              	.LVL86:
+ 188:Core/Src/lcd_driver.c **** 		}
+ 919              		.loc 1 188 4 view .LVU228
+ 920 002c 0022     		movs	r2, #0
+ 921 002e 1146     		mov	r1, r2
+ 922 0030 1046     		mov	r0, r2
+ 923 0032 FFF7FEFF 		bl	__LCD_State_Update_Cursor_Position
+ 924              	.LVL87:
+ 925 0036 ECE7     		b	.L54
+ 926              	.L57:
+ 188:Core/Src/lcd_driver.c **** 		}
+ 927              		.loc 1 188 4 is_stmt 0 view .LVU229
+ 928              	.LBE3:
+ 192:Core/Src/lcd_driver.c **** }
+ 929              		.loc 1 192 2 is_stmt 1 view .LVU230
+ 193:Core/Src/lcd_driver.c **** 
+ 930              		.loc 1 193 1 is_stmt 0 view .LVU231
+ 931 0038 0120     		movs	r0, #1
+ 932 003a F8BD     		pop	{r3, r4, r5, r6, r7, pc}
+ 193:Core/Src/lcd_driver.c **** 
+ 933              		.loc 1 193 1 view .LVU232
+ 934              		.cfi_endproc
+ 935              	.LFE251:
+ 937              		.global	lcd_current_state_g
+ 938              		.section	.bss.lcd_current_state_g,"aw",%nobits
+ 939              		.align	2
+ 942              	lcd_current_state_g:
+ 943 0000 00000000 		.space	40
+ 943      00000000 
+ 943      00000000 
+ 943      00000000 
+ 943      00000000 
+ 944              		.text
+ARM GAS  /tmp/cckGfUJX.s 			page 23
+
+
+ 945              	.Letext0:
+ 946              		.file 2 "/usr/arm-none-eabi/include/machine/_default_types.h"
+ 947              		.file 3 "/usr/arm-none-eabi/include/sys/_stdint.h"
+ 948              		.file 4 "Drivers/CMSIS/Device/ST/STM32F4xx/Include/stm32f446xx.h"
+ 949              		.file 5 "/usr/lib/gcc/arm-none-eabi/14.1.0/include/stddef.h"
+ 950              		.file 6 "Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_def.h"
+ 951              		.file 7 "Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_dma.h"
+ 952              		.file 8 "Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal_i2c.h"
+ 953              		.file 9 "Core/Inc/lcd_driver.h"
+ 954              		.file 10 "/usr/arm-none-eabi/include/stdio.h"
+ 955              		.file 11 "/usr/arm-none-eabi/include/stdlib.h"
+ 956              		.file 12 "/usr/arm-none-eabi/include/string.h"
+ 957              		.file 13 "Drivers/STM32F4xx_HAL_Driver/Inc/stm32f4xx_hal.h"
+ 958              		.file 14 "<built-in>"
+ARM GAS  /tmp/cckGfUJX.s 			page 24
+
+
+DEFINED SYMBOLS
+                            *ABS*:00000000 lcd_driver.c
+     /tmp/cckGfUJX.s:21     .text.LCD_Reset:00000000 $t
+     /tmp/cckGfUJX.s:27     .text.LCD_Reset:00000000 LCD_Reset
+     /tmp/cckGfUJX.s:79     .text.LCD_Write_Char:00000000 $t
+     /tmp/cckGfUJX.s:85     .text.LCD_Write_Char:00000000 LCD_Write_Char
+     /tmp/cckGfUJX.s:128    .text.LCD_Write_String:00000000 $t
+     /tmp/cckGfUJX.s:134    .text.LCD_Write_String:00000000 LCD_Write_String
+     /tmp/cckGfUJX.s:209    .text.LCD_Set_Cursor_Position:00000000 $t
+     /tmp/cckGfUJX.s:215    .text.LCD_Set_Cursor_Position:00000000 LCD_Set_Cursor_Position
+     /tmp/cckGfUJX.s:289    .text.LCD_Return_Home:00000000 $t
+     /tmp/cckGfUJX.s:295    .text.LCD_Return_Home:00000000 LCD_Return_Home
+     /tmp/cckGfUJX.s:348    .text.LCD_Initialise_State_Struct:00000000 $t
+     /tmp/cckGfUJX.s:354    .text.LCD_Initialise_State_Struct:00000000 LCD_Initialise_State_Struct
+     /tmp/cckGfUJX.s:388    .text.LCD_Initialise_State_Struct:00000018 $d
+     /tmp/cckGfUJX.s:942    .bss.lcd_current_state_g:00000000 lcd_current_state_g
+     /tmp/cckGfUJX.s:393    .text.LCD_Setup:00000000 $t
+     /tmp/cckGfUJX.s:399    .text.LCD_Setup:00000000 LCD_Setup
+     /tmp/cckGfUJX.s:512    .text.__LCD_Redraw_Current_State:00000000 $t
+     /tmp/cckGfUJX.s:518    .text.__LCD_Redraw_Current_State:00000000 __LCD_Redraw_Current_State
+     /tmp/cckGfUJX.s:557    .text.__LCD_Redraw_Current_State:00000024 $d
+     /tmp/cckGfUJX.s:562    .text.LCD_Show_Debug_Message:00000000 $t
+     /tmp/cckGfUJX.s:568    .text.LCD_Show_Debug_Message:00000000 LCD_Show_Debug_Message
+     /tmp/cckGfUJX.s:609    .text.__LCD_State_Update_Cursor_Position:00000000 $t
+     /tmp/cckGfUJX.s:615    .text.__LCD_State_Update_Cursor_Position:00000000 __LCD_State_Update_Cursor_Position
+     /tmp/cckGfUJX.s:710    .text.__LCD_State_Update_Cursor_Position:00000044 $d
+     /tmp/cckGfUJX.s:715    .text.LCD_Set_Cursor_Position_Non_Debug:00000000 $t
+     /tmp/cckGfUJX.s:721    .text.LCD_Set_Cursor_Position_Non_Debug:00000000 LCD_Set_Cursor_Position_Non_Debug
+     /tmp/cckGfUJX.s:765    .rodata.__LCD_State_Update_LCD_Screen.str1.4:00000000 $d
+     /tmp/cckGfUJX.s:769    .text.__LCD_State_Update_LCD_Screen:00000000 $t
+     /tmp/cckGfUJX.s:775    .text.__LCD_State_Update_LCD_Screen:00000000 __LCD_State_Update_LCD_Screen
+     /tmp/cckGfUJX.s:848    .text.__LCD_State_Update_LCD_Screen:0000003c $d
+     /tmp/cckGfUJX.s:854    .text.LCD_Write_String_Non_Debug:00000000 $t
+     /tmp/cckGfUJX.s:860    .text.LCD_Write_String_Non_Debug:00000000 LCD_Write_String_Non_Debug
+     /tmp/cckGfUJX.s:939    .bss.lcd_current_state_g:00000000 $d
+                           .group:00000000 wm4.0.7dce94b23b952799e659b6f001d406e2
+                           .group:00000000 wm4.stm32f4xx_hal_conf.h.25.83c9712fa333884c379ccc2d282f16d5
+                           .group:00000000 wm4.stm32f4xx.h.38.d053a70ce905afacf9f39dda4c23396b
+                           .group:00000000 wm4.stm32f446xx.h.34.dd43cebd7192f96bce7a5ff975201274
+                           .group:00000000 wm4._newlib_version.h.4.411db44ea2338a62eca2f0777f81481b
+                           .group:00000000 wm4.features.h.33.2eefb68b261e70563a8ac654e712169f
+                           .group:00000000 wm4._default_types.h.15.247e5cd201eca3442cbf5404108c4935
+                           .group:00000000 wm4._intsup.h.10.48bafbb683905c4daa4565a85aeeb264
+                           .group:00000000 wm4._stdint.h.10.c24fa3af3bc1706662bb5593a907e841
+                           .group:00000000 wm4.stdint.h.23.d53047a68f4a85177f80b422d52785ed
+                           .group:00000000 wm4.cmsis_version.h.32.0ac195c83bb4537824e6ad1c47474b79
+                           .group:00000000 wm4.core_cm4.h.66.e4ff136c4a17abc46741866f64f8e729
+                           .group:00000000 wm4.cmsis_gcc.h.26.498d0ad17a45fc9ef20fdc01caf02259
+                           .group:00000000 wm4.core_cm4.h.174.62be9b4588d49bed18171771001331df
+                           .group:00000000 wm4.mpu_armv7.h.32.83326921a797fa9d6f70449916b4b839
+                           .group:00000000 wm4.stm32f446xx.h.917.0fdd8713166bfa6b9d21cdb14776606b
+                           .group:00000000 wm4.stm32f4xx.h.195.a4b8bf80f37cc96981498656ffe5f588
+                           .group:00000000 wm4.stm32_hal_legacy.h.22.eb8efbbc8c257479a785208a25e32ff6
+                           .group:00000000 wm4.stddef.h.39.0dc9006b34572d4d9cae4c8b422c4971
+                           .group:00000000 wm4.stm32f4xx_hal_def.h.58.3cb484e92e5ccf2e55312a4714e27917
+                           .group:00000000 wm4.stm32f4xx_hal_rcc_ex.h.20.41619f9808c16372c6163b386a6c33f3
+                           .group:00000000 wm4.stm32f4xx_hal_rcc.h.106.7a3b8fae3878f325ccf2eab43ac149ad
+ARM GAS  /tmp/cckGfUJX.s 			page 25
+
+
+                           .group:00000000 wm4.stm32f4xx_hal_gpio.h.21.22da6a14b6049d6ac156577be74df1d7
+                           .group:00000000 wm4.stm32f4xx_hal_gpio_ex.h.21.33ea7ea24fd170b1d3dce3d23330c9d3
+                           .group:00000000 wm4.stm32f4xx_hal_gpio.h.254.d7e07832f748fe8bcb575db0b8373592
+                           .group:00000000 wm4.stm32f4xx_hal_exti.h.21.4fc7f37c3cc97fb821b368ede79414b6
+                           .group:00000000 wm4.stm32f4xx_hal_dma.h.21.8e4b1421c914345c23be719e5e528779
+                           .group:00000000 wm4.stm32f4xx_hal_dma.h.720.ac2d7eef74792e4026acc4d2923c5da4
+                           .group:00000000 wm4.stm32f4xx_hal_cortex.h.20.a1e25f69ec9adea00da0353b137e869f
+                           .group:00000000 wm4.stm32f4xx_ll_adc.h.21.8ab9bf4d55f678506dbbe8102cb12bbc
+                           .group:00000000 wm4.stm32f4xx_hal_adc.h.159.62530d9b3382796f19493a9679ef426c
+                           .group:00000000 wm4.stm32f4xx_hal_adc_ex.h.21.94e87945640619cdd4cff40627e1380a
+                           .group:00000000 wm4.stm32f4xx_hal_adc.h.639.c30c49256117cbda0ada83149c65b3d8
+                           .group:00000000 wm4.stm32f4xx_hal_flash.h.20.2f1e0d1b7010b3a81a7980aaf712e7e5
+                           .group:00000000 wm4.stm32f4xx_hal_flash_ex.h.20.77cb3e5c0f1e426426a4cbc884a1eed8
+                           .group:00000000 wm4.stm32f4xx_hal_flash.h.361.23bc19b9eac79b0956d913651841ede8
+                           .group:00000000 wm4.stm32f4xx_hal_i2c.h.21.147e96a27b1f7b1f2f8ee22132703ee3
+                           .group:00000000 wm4.stm32f4xx_hal_i2c_ex.h.21.951ef5bfa13cf131d2015c338e82e461
+                           .group:00000000 wm4.stm32f4xx_hal_i2c.h.647.ade9c3447780b1cc0ece02f0ce83aedc
+                           .group:00000000 wm4.stm32f4xx_hal_pwr.h.20.1905a0783a9c83adefd7df0c4b501e40
+                           .group:00000000 wm4.stm32f4xx_hal_pwr_ex.h.20.9786dbd699c850465fa7b77273740267
+                           .group:00000000 wm4.stm32f4xx_hal_pwr.h.338.debc0a4a62ba54688e63ab53dd99c4ea
+                           .group:00000000 wm4.stm32f4xx_hal_tim.h.21.6320ed03fec05f5a81ebdcc8da91e41b
+                           .group:00000000 wm4.stm32f4xx_hal_tim_ex.h.21.3ff8ebb44e16ac9d5b95e2b3533221b9
+                           .group:00000000 wm4.stm32f4xx_hal_uart.h.21.ba8e24dd05c77faac3f3d48472e636ba
+                           .group:00000000 wm4.stm32f4xx_hal.h.71.02372bc31d47d29d3f67fbfe1429649e
+                           .group:00000000 wm4.main.h.60.a6283898ee25cd23d2a979a4abcc715c
+                           .group:00000000 wm4.ieeefp.h.77.5ad60f72ea25fc152400b550ac118212
+                           .group:00000000 wm4.newlib.h.7.a37ffbe9e5aff74303f4e60b1cc1c01b
+                           .group:00000000 wm4.config.h.224.10ee1ad185d877c6e334e6581faab44d
+                           .group:00000000 wm4._ansi.h.31.de524f58584151836e90d8620a16f8e8
+                           .group:00000000 wm4.stdlib.h.13.4ed386f5c1a80d71e72172885d946ef2
+                           .group:00000000 wm4.stddef.h.158.eec8bf00b5213f43d095cb984c5f22e3
+                           .group:00000000 wm4.cdefs.h.49.56fd742369e655e7e8a7e365e706e208
+                           .group:00000000 wm4._types.h.20.dd0d04dca3800a0d2a6129b87f3adbb2
+                           .group:00000000 wm4.stddef.h.158.6f8e08a347b1cff664332fa350bfceb3
+                           .group:00000000 wm4._types.h.127.3bdfe3ff8ea2d0985b03d9cbe93480e3
+                           .group:00000000 wm4.reent.h.18.25503cdc8b7e55dd0d6ea7b3e5af7a03
+                           .group:00000000 wm4.lock.h.2.1461d1fff82dffe8bfddc23307f6484f
+                           .group:00000000 wm4.reent.h.78.7f0775353a33c852a1479c008f68cd03
+                           .group:00000000 wm4.alloca.h.8.dfc0c703c47ec3e69746825b17d9e66d
+                           .group:00000000 wm4.stdlib.h.56.f4862cfbf4363a1db01842d5bdf72c18
+                           .group:00000000 wm4.stdio.h.27.3fc80220048df77954e38daec3bb9670
+                           .group:00000000 wm4.stdarg.h.34.3a23a216c0c293b3d2ea2e89281481e6
+                           .group:00000000 wm4.stdio.h.47.dc31ec4674d7bcb103c9f08809549f45
+                           .group:00000000 wm4.stdio.h.2.4aa87247282eca6c8f36f9de33d8df1a
+                           .group:00000000 wm4.stdio.h.87.a1e20d2651f9bfb66e51bfbe849db00a
+                           .group:00000000 wm4.string.h.8.c4b8571ce60dff2817f43fec8b86aecd
+                           .group:00000000 wm4.lcd_driver.h.23.09754e40f2e0b3c7d3702c71b125b37c
+
+UNDEFINED SYMBOLS
+HAL_I2C_Master_Transmit
+HAL_Delay
+strlen
+memset
+malloc
+sprintf

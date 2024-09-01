@@ -80,6 +80,8 @@ static void MX_TIM3_Init(void);
 
 void Process_ADC_Buffer(uint16_t *buffer)
 {
+    char uart_buf_it[50];
+    int uart_buf_len_it;
     uint32_t sum1 = 0, sum2 = 0;
     for (int i = 0; i < ADC_SAMPLES; ++i) {
         sum1 += buffer[i * 2];
@@ -89,11 +91,17 @@ void Process_ADC_Buffer(uint16_t *buffer)
     vref_avg = sum2 / ADC_SAMPLES;
     temp_avg = sum1 / ADC_SAMPLES;
 
+    // uart_buf_len_it = sprintf(uart_buf_it, "The calcs\r\n", temp, vref);
+    // HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf_it, uart_buf_len_it, 100);
+    // VDDA can be calculated based on the measured vref and the calibration data
     vdda = (float) VREFINT_CAL_VREF * (float) *VREFINT_CAL_ADDR / vref_avg / 1000;
 
+    // Knowing vdda and the resolution of adc - the actual voltage can be calculated
     vref = (float) vdda / ADC_RESOLUTION * vref_avg;
+    // vref = __LL_ADC_CALC_VREFANALOG_VOLTAGE(vref_avg, ADC_RESOLUTION_12B);
 
     temp = (float) ( (float)( (float)(TEMPSENSOR_CAL2_TEMP - TEMPSENSOR_CAL1_TEMP) / (float)(*TEMPSENSOR_CAL2_ADDR - *TEMPSENSOR_CAL1_ADDR)) * (temp_avg - *TEMPSENSOR_CAL1_ADDR) + TEMPSENSOR_CAL1_TEMP);
+    // temp = __LL_ADC_CALC_TEMPERATURE(vref, temp_avg, ADC_RESOLUTION_12B);
 }
 
 void HAL_ADC_ConvHalfCpltCallback(ADC_HandleTypeDef* hadc)
@@ -166,16 +174,16 @@ int main(void)
 
 //  	LCD_Set_Cursor_Position(&hi2c1, 2, 0);
 
-	ret = LCD_Write_String_Non_Debug(&hi2c1, "Hi Dude, where's my car?!");
+	LCD_Write_String_Non_Debug(&hi2c1, "Initialising");
 
-	HAL_Delay(2000);
+	// HAL_Delay(2000);
 
-	ret = LCD_Show_Debug_Message(&hi2c1, "Debug!!");
+	// LCD_Show_Debug_Message(&hi2c1, "Debug Message!!");
 
 
 //	Setup the timer
 	LCD_Set_Cursor_Position_Non_Debug(&hi2c1,1,0);
-	ret = LCD_Write_String_Non_Debug(&hi2c1, "Setting up timer");
+	// LCD_Write_String_Non_Debug(&hi2c1, "Setting up timer");
 	HAL_TIM_Base_Start_IT(&htim3);
 	HAL_ADC_Start_DMA(&hadc1, (uint32_t *) adc_buffer, (ADC_SAMPLES*2*2));
 
@@ -203,22 +211,25 @@ int main(void)
 	  now = HAL_GetTick();
 	  if(now - then >= 1000)
 	  {
-		  LCD_Set_Cursor_Position_Non_Debug(&hi2c1,1,0);
-		  // Write to UART
-		  uart_buf_len = sprintf(uart_buf, "Temperature = %4.2f °C   Vref = %2.2f V\r\n", temp, vref);
-		  HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, uart_buf_len, 100);
+        // int temp2 = 21.45;
+        // float vref2 = 14.254;
+        LCD_Set_Cursor_Position_Non_Debug(&hi2c1,1,0);
+        // Write to UART
+        memset(uart_buf, 0, sizeof(uart_buf));
+        uart_buf_len = sprintf(uart_buf, "Temperature = %4.2f °C   Vref = %2.2f V\r\n", temp, vref);
+        HAL_UART_Transmit(&huart2, (uint8_t *)uart_buf, uart_buf_len, 100);
 
-		  // Write to LCD Screen
-		  char temp_string_first[20] = "Temp ";
-		  sprintf(temp_string_second, "%.2f C", (temp));
-		  strcat(temp_string_first,temp_string_second);
-		  LCD_Write_String_Non_Debug(&hi2c1, temp_string_first);
-		  LCD_Set_Cursor_Position_Non_Debug(&hi2c1, 2, 0);
+        // Write to LCD Screen
+        char temp_string_first[20] = "Temp ";
+        sprintf(temp_string_second, "%.2f C", (temp));
+        strcat(temp_string_first,temp_string_second);
+        LCD_Write_String_Non_Debug(&hi2c1, temp_string_first);
+        LCD_Set_Cursor_Position_Non_Debug(&hi2c1, 2, 0);
 
-		  char vref_string_first[20] = "Vref ";
-		  sprintf(vref_string_second, "%.2f C", (vref));
-		  strcat(vref_string_first,vref_string_second);
-		  LCD_Write_String_Non_Debug(&hi2c1, vref_string_first);
+        char vref_string_first[20] = "Vref ";
+        sprintf(vref_string_second, "%.2f V", (vref));
+        strcat(vref_string_first,vref_string_second);
+        LCD_Write_String_Non_Debug(&hi2c1, vref_string_first);
 
 
 		  then = now;

@@ -9,7 +9,11 @@
  *      basic functionality of this LCD screen.
  *
  *      In terms of operation times, all instructions take around 40 us, except for the
- *      return home and clear display operations which use 1.53 ms.
+ *      return home and clear display operations which take 1.53 ms.
+ * 
+ * 		Available Row and Column values:
+ *		Row values - 1,2
+ *		Col values - 0-15
  */
 
 #ifndef INC_LCD_DRIVER_H_
@@ -103,44 +107,162 @@
 #define LCD_ROW_2_FIRST_ADDRESS 0x40
 
 // Struct Definitions
+/**
+ * @struct	lcd_current_state
+ * @brief	Records the current state of the LCD screen to allow 
+ * 			temporary messages to display over it and revert back.
+ * 
+ * @var	int	cursor_row
+ * The current row the cursor is on.
+ * 
+ * @var	int	cursor_col
+ * The current column the cursor is on.
+ * 
+ * @var	char	chars_on_screen
+ * The current characters that are on the screen.
+ * 
+ */
 struct lcd_current_state
 {
 	int cursor_row;
 	int cursor_col;
 
 	char chars_on_screen[LCD_MAX_CHAR_LENGTH];
-
 };
 
 // Function Definitions
-
+/**
+ * @brief Sets up the LCD screen
+ * 
+ * @param i2c_handler	The STM32 I2C handler
+ * @return int 			The error code
+ */
 int LCD_Setup(I2C_HandleTypeDef* i2c_handler);
 
+
+/**
+ * @brief Clear the LCD Screen
+ * 
+ * @param i2c_handler 	The STM32 I2C handler
+ * @return int 			The error code
+ */
 int LCD_Reset(I2C_HandleTypeDef* i2c_handler);
 
+
+/**
+ * @brief Writes a singular char to the LCD screen
+ * 
+ * @param i2c_handler 	The STM32 I2C handler
+ * @param output_char 	The char to be written to the screen
+ * @return int 			The error code
+ */
 int LCD_Write_Char(I2C_HandleTypeDef* i2c_handler, char output_char);
 
+
+/**
+ * @brief Writes a string to the LCD screen (wrapper for LCD_Write_Char).
+ * Cannot automatically wrap strings to the next row in the LCD screen.
+ * 
+ * @param i2c_handler 		The STM32 I2C handler
+ * @param output_string 	The string to be written to the screen
+ * @return int 				The error code
+ */
 int LCD_Write_String(I2C_HandleTypeDef* i2c_handler, char* output_string);
 
+
+/**
+ * @brief Set the cursor to a position on the LCD screen.
+ * 
+ * @param i2c_handler	The STM32 I2C handler
+ * @param row 			The row for the cursor to go to
+ * @param col 			The column for the cursor to go to
+ * @return int 			The error code
+ */
 int LCD_Set_Cursor_Position(I2C_HandleTypeDef* i2c_handler, int row, int col);
 
+
+/**
+ * @brief Sets the cursor back to the beginning (I.e., Row 1 column 0)
+ * 
+ * @param i2c_handler 	The STM32 I2C handler
+ * @return int 			The error code
+ */
 int LCD_Return_Home(I2C_HandleTypeDef* i2c_handler);
 
 
-
+/**
+ * @brief Temporarily display a message for 4 seconds.
+ * 
+ * @param i2c_handler 		The STM32 I2C handler
+ * @param output_string 	The string to display temporarily
+ * @return int 				The error code
+ */
 int LCD_Show_Debug_Message(I2C_HandleTypeDef* i2c_handler, char* output_string);
 
 // Wrapper functions for LCD Debugging Messages
 // and returning the text back to the original state
+
+/**
+ * @brief Writes string to the LCD screen and updates the lcd_current_state
+ * struct. Also handles text wrap around to the next line.
+ * 
+ * @param i2c_handler 		The STM32 I2C handler
+ * @param output_string 	The string to be written to the screen
+ * @return int 				The error code
+ */
 int LCD_Write_String_Non_Debug(I2C_HandleTypeDef* i2c_handler, char* output_string);
 
-// Row values 1,2
-// Col values 0-15
+
+
+/**
+ * @brief Set the cursor to a position on the LCD screen and updates the 
+ * lcd_current_state struct.
+ * 
+ * @param i2c_handler 		The STM32 I2C handler
+ * @param row 				The row for the cursor to go to
+ * @param col 				The column for the cursor to go to
+ * @return int 				The error code
+ */
 int LCD_Set_Cursor_Position_Non_Debug(I2C_HandleTypeDef* i2c_handler, int row, int col);
 
+/**
+ * @brief Initialises the lcd_current_state struct and zeros all values.
+ * 
+ * @param i2c_handler 		The STM32 I2C handler
+ * @return int 				The error code
+ */
 int LCD_Initialise_State_Struct(I2C_HandleTypeDef* i2c_handler);
+
+/**
+ * @brief Logic to update the cursor position to lcd_current_state struct. 
+ * Not to be called directly.
+ * 
+ * @param row 							The row the cursor is now located at
+ * @param col 							The column the cursor is now located at
+ * @param update_absolute_position 		Indicate if the cursor is to update to 
+ * 										the position (1) or increment from the 
+ * 										current position (0)
+ * @return int 							The error code
+ */
 int __LCD_State_Update_Cursor_Position(int row, int col, int update_absolute_position);
+
+/**
+ * @brief Update the lcd_current_state struct's string buffer. Not to be called 
+ * directly.
+ * 
+ * @param i2c_handler 
+ * @param output_char 
+ * @return int 
+ */
 int __LCD_State_Update_LCD_Screen(I2C_HandleTypeDef* i2c_handler, char output_char);
+
+/**
+ * @brief Redraws the screen based on the contents in the lcd_current_state
+ * struct. Not to be called directly.
+ * 
+ * @param i2c_handler	The STM32 I2C handler
+ * @return int 			The error code
+ */
 int __LCD_Redraw_Current_State(I2C_HandleTypeDef* i2c_handler);
 
 
